@@ -37,7 +37,21 @@ __attribute__((unused)) static void fail(const char *what, uint32_t insn, int ca
    refused, so hv_jit_write's per-thread W^X toggle is what makes it work. */
 static HvJitRegion region;
 
+/* A host that does not implement one of these takes SIGILL on it: report that
+   as "not available here" instead of dying. */
+#include <setjmp.h>
+#include <signal.h>
+static sigjmp_buf ill_env;
+static volatile sig_atomic_t ill;
+
+static void on_ill(int sig) { (void)sig; ill = 1; siglongjmp(ill_env, 1); }
+
 static void make_stub(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = on_ill;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGILL, &sa, NULL);
     if (hv_jit_region_open(&region, 4096) != 0) {
         perror("jit region");
         exit(1);
@@ -87,6 +101,11 @@ static void diff_case(const char *name, uint32_t insn, int rounds, int meaningfu
         }
         uint8_t native[64];
         memcpy(native, regs, 64);
+        ill = 0;
+        if (sigsetjmp(ill_env, 1) != 0) {
+            fprintf(stderr, "skip %s (insn %08x): this host does not implement it\n", name, insn);
+            return;
+        }
         run_native(insn, native);
 
         memset(&cpu.v, 0, sizeof cpu.v);
