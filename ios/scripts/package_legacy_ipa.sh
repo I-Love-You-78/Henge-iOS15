@@ -9,6 +9,9 @@
 # get-task-allow are the whole point on iOS 14–16: that is how the app gets
 # executable memory for the JIT.
 set -e
+# This build has no embedded frameworks and no app extensions, so the loops below
+# must not trip over a glob that matches nothing.
+setopt null_glob 2>/dev/null || true
 IOS="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$IOS/.." && pwd)"
 OUT="${HENGE_OUT:-$ROOT/build/out/Henge-iOS14.ipa}"
