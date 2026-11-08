@@ -25,10 +25,10 @@ extension View {
         if #available(iOS 26.0, *) {
             glassEffect(.regular, in: shape)
         } else {
-            background(.ultraThinMaterial, in: shape)
+            background(shape.fill(.ultraThinMaterial))
         }
         #else
-        background(.ultraThinMaterial, in: shape)
+        background(shape.fill(.ultraThinMaterial))
         #endif
     }
 
@@ -39,7 +39,7 @@ extension View {
 
     /// A card on the page.
     func deskCard(radius: CGFloat = 22) -> some View {
-        background(Desk.card, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+        background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Desk.card))
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Desk.hairline, lineWidth: 0.5))
     }
 }
@@ -50,13 +50,13 @@ struct DeskButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 19, weight: .bold))
-            .foregroundStyle(enabled ? Color.white : Desk.dim)
+            .foregroundColor(enabled ? Color.white : Desk.dim)
             .frame(maxWidth: .infinity)
             .frame(height: 58)
-            .background(enabled ? Desk.accent : Desk.raised, in: Capsule())
+            .background(Capsule().fill(enabled ? Desk.accent : Desk.raised))
             .opacity(configuration.isPressed ? 0.85 : 1)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12))
     }
 }
 
@@ -67,7 +67,7 @@ struct DeskHeading: View {
     var body: some View {
         Text(title)
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Desk.dim)
+            .foregroundColor(Desk.dim)
             .padding(.horizontal, 18)
             .padding(.top, 18)
             .padding(.bottom, 8)
@@ -145,7 +145,7 @@ enum Theme {
 extension View {
     /// high: a card raised above the others (a result, an outcome).
     func hengeCard(high: Bool = false) -> some View {
-        background(high ? Desk.raised : Desk.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(high ? Desk.raised : Desk.card))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Desk.hairline, lineWidth: 1))
     }
 }
@@ -157,13 +157,13 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(enabled ? Color.white : Desk.dim)
+            .foregroundColor(enabled ? Color.white : Desk.dim)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(enabled ? Desk.accent : Desk.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(enabled ? Desk.accent : Desk.raised))
             .opacity(configuration.isPressed ? 0.85 : 1)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12))
     }
 }
 
@@ -173,6 +173,6 @@ struct CardButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.14))
     }
 }

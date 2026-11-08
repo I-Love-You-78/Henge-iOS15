@@ -1,0 +1,19 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.zsh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.plist text eol=lf
+*.swift text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.S text eol=lf
+*.s text eol=lf
+*.m text eol=lf
+*.md text eol=lf
+Makefile text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ipa binary
+*.tipa binary

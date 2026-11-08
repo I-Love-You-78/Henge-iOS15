@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "classify.h"
+#include "hostcaps.h"
 #include "memop.h"
 #include "mmu.h"
 #include "operands.h"
@@ -888,6 +889,20 @@ static void translate_mem(Emit *e, uint32_t insn, uint64_t pc) {
     HvMemOp op;
     if (hv_mem_decode(insn, &op) != 0) {
         put_helper(e, pc, insn, HV_OP_UNDEF);
+        return;
+    }
+    /* Instructions the guest may run that an older host CPU cannot: Armv8.1
+       atomics and CAS (FEAT_LSE), LDAPR (v8.3) and the imm9 ordered forms
+       LDAPUR/STLUR (FEAT_LRCPC2). Copying one of those into a block is a
+       SIGILL on an A9, so they go to the C path, which emulates them with
+       load/store-exclusive loops (core/memop.c, do_atomic). A modern host
+       keeps them inline. */
+    if ((op.kind == HV_MEM_ATOMIC || op.kind == HV_MEM_CAS) && !hv_host_has_lse()) {
+        put_helper(e, pc, insn, HV_OP_MEM);
+        return;
+    }
+    if (op.kind == HV_MEM_ORDERED && (insn & 0x3f200c00) == 0x19000000 && !hv_host_has_lrcpc2()) {
+        put_helper(e, pc, insn, HV_OP_MEM); /* LDAPUR, LDAPURB, LDAPURH, STLUR* */
         return;
     }
     static int c_excl = -1; /* HV_C_EXCL: keep every exclusive on the C path (debugging) */

@@ -26,19 +26,19 @@ struct BootDisplay: View {
                     if image.height > image.width {
                         Image(systemName: "apple.logo")
                             .font(.system(size: 44))
-                            .foregroundStyle(.white)
+                            .foregroundColor(.white)
                     }
                 } else {
                     Image(systemName: "apple.logo")
                         .font(.system(size: 44))
-                        .foregroundStyle(.white)
+                        .foregroundColor(.white)
                 }
             }
             GPUScreen(display: display, role: role, surface: surface,
                       matchScreenColors: matchScreenColors, brightness: screenBrightness)
                 .allowsHitTesting(false)
         }
-        .task {
+        .compatTask {
             // Once macOS draws with the GPU the frames go straight to GPUScreen:
             // nothing to copy here any more.
             while !Task.isCancelled && !gpuLive {

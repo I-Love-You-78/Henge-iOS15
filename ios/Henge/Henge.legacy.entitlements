@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- For the iOS 14/A9 build (ios/project-legacy.yml).
+     iOS 14–16 has no Trusted Execution Monitor, so an app can be given
+     executable memory by its signature alone: this is what TrollStore, a
+     jailbreak, or a sideloader that adds dynamic-codesigning relies on. That is
+     the only JIT route on those versions (StikDebug needs iOS 17.4, the built-in
+     StikJIT helper needs iOS 26). -->
+<plist version="1.0">
+<dict>
+	<!-- A debugger may attach: how SideStore/AltStore hand out JIT, and what
+	     TrollStore's enable JIT sets. -->
+	<key>get-task-allow</key>
+	<true/>
+	<!-- MAP_JIT, and pages made executable: the route that needs no debugger. -->
+	<key>dynamic-codesigning</key>
+	<true/>
+	<!-- Guest RAM and the JIT region on top of the app itself. -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+	<!-- Guest RAM plus the JIT region's two mappings sit past the default address-space cap. -->
+	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
+	<true/>
+</dict>
+</plist>

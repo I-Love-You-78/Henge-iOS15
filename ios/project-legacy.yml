@@ -1,0 +1,106 @@
+name: Henge
+# The iOS 14 / A9 spec: same sources as project.yml, built for iOS 14 and without
+# the pieces that only exist on later iOS. Used by ios/scripts/package_legacy_ipa.sh
+# and .github/workflows/ios14-build.yml. See docs/ios14-a9-support.md.
+#
+#   xcodegen generate --spec ios/project-legacy.yml --project ios
+#
+options:
+  bundleIdPrefix: com.henge
+  deploymentTarget:
+    iOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    HENGE_BUNDLE_IDENTIFIER: com.henge.app.ios14
+    HENGE_ENTITLEMENTS: Henge/Henge.legacy.entitlements
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: YES
+    ENABLE_BITCODE: NO
+    SWIFT_VERSION: "5.0"
+    SWIFT_OPTIMIZATION_LEVEL: "-O"
+    GCC_OPTIMIZATION_LEVEL: "2"
+    CLANG_C_LANGUAGE_STANDARD: c11
+    # HENGE_LEGACY: the iOS 14 code paths (a JIT screen of its own, no StikJIT).
+    # HENGE_NO_SCENE_ACCESSORY: no iOS 27 scene accessory in this SDK.
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS: "HENGE_LEGACY HENGE_NO_SCENE_ACCESSORY"
+
+targets:
+  Henge:
+    type: application
+    platform: iOS
+    sources:
+      - path: Henge
+        excludes:
+          - "Resources/**"
+          - "Info.plist"
+          - "Henge.entitlements"
+          - "Henge.personal.entitlements"
+          - "Henge.legacy.entitlements"
+          - "AppIcon.icon/**"
+          - "AppIcon.icon"
+          # iOS 26/27 only: the built-in StikJIT helper, its app extension, and
+          # on-device pairing. On iOS 14–16 JIT comes from TrollStore or a
+          # jailbreak instead (Henge/Legacy/JITLegacy.swift).
+          - "JIT/JITSetup.swift"
+          - "JIT/JITSetupView.swift"
+          - "JIT/JITBuiltIn.swift"
+          - "JIT/JITPairing.swift"
+          - "JIT/JITNetworkAdvice.swift"
+          - "Native/HuskRPPairing.h"
+      - path: Henge/Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(HENGE_BUNDLE_IDENTIFIER)
+        PRODUCT_NAME: Henge
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_FILE: Henge/Info.plist
+        # The iOS 14 SDK has no launch screen dictionary key issue; the same file works.
+        CODE_SIGN_ENTITLEMENTS: $(HENGE_ENTITLEMENTS)
+        SWIFT_OBJC_BRIDGING_HEADER: Henge/HengeBridge.h
+        TARGETED_DEVICE_FAMILY: "1,2"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/../core"
+          - "$(SRCROOT)/../host"
+          - "$(SRCROOT)/../devices"
+        LIBRARY_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/../build/ios"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          # The engine (make ios-lib HENGE_NO_NET=1) and the installer
+          # (tools/build_ios_restore.sh). No libslirp/glib: the guest has no
+          # network in this build, and nothing here needs a Husk checkout.
+          - "-lhengevm"
+          - "-lhengerestore"
+          - "-lz"
+          - "-framework"
+          - "Metal"
+          - "-framework"
+          - "IOSurface"
+          - "-framework"
+          - "AudioToolbox"
+          - "-framework"
+          - "AVFAudio"
+          - "-framework"
+          - "CoreFoundation"
+    preBuildScripts:
+      - name: Build the engine
+        script: |
+          set -e
+          cd "$SRCROOT/.."
+          make ios-lib HENGE_NO_NET=1 IOS_MIN=14.0 build/henge-agent.gz
+          IOS_MIN=14.0 ./tools/build_ios_restore.sh
+        basedOnDependencyAnalysis: false
+    postBuildScripts:
+      - name: Bundle the Mac helper
+        # What runs inside macOS for the clipboard and shared folder (tools/henge-agent.m).
+        script: |
+          set -e
+          cp "$SRCROOT/../build/henge-agent.gz" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/henge-agent.gz"
+        basedOnDependencyAnalysis: false

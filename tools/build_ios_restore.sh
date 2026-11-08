@@ -6,6 +6,9 @@
 # libzip (cmake), and HengeVM's libusb stand-in, curl stand-in and install
 # driver. The Mac build (make) uses Homebrew's copies of the same libraries.
 set -e
+# The app's deployment target for the iOS build: 17.0 by default, 14.0 for the
+# iOS 14/A9 build (which passes IOS_MIN=14.0).
+IOS_MIN="${IOS_MIN:-17.0}"
 # "tools/build_ios_restore.sh mac" builds the very same sources for the Mac into
 # build/mac-restore, so tests on the Mac run the restore code iOS ships.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,8 +21,8 @@ if [ "$1" = mac ]; then
 else
     BUILD="$ROOT/build/ios"
     SDKNAME=iphoneos
-    CC=(xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=17.0)
-    CMAKE_TARGET=(-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0)
+    CC=(xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min="$IOS_MIN")
+    CMAKE_TARGET=(-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_MIN")
 fi
 OUT="$BUILD/restore"
 DEPS="$BUILD/deps"

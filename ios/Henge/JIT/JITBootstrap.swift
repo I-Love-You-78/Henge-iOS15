@@ -63,7 +63,14 @@ enum JITBootstrap {
     /// 1 GB, or 1.5 GB when Settings > Performance > Code cache asks for it (experimental: a bigger cache fills and
     /// empties less often, and costs twice its size against the memory limit, as both mappings count). Fixed for the
     /// launch: the region is claimed once.
-    static let jitBytes: Int = UserDefaults.standard.integer(forKey: codeCacheKey) == 1536 ? 1536 << 20 : 1024 << 20
+    ///
+    /// A 2 GB iPhone (6s, SE, 7, 8) cannot spare a gigabyte for translated code on top of the guest's memory, so it
+    /// gets 256 MB: the translator flushes and starts over when the region fills, which costs the code it had
+    /// translated, so a Mac there runs slower still (docs/ios14-a9-support.md).
+    static let jitBytes: Int = {
+        if Device.lowMemoryDevice { return 256 << 20 }
+        return UserDefaults.standard.integer(forKey: codeCacheKey) == 1536 ? 1536 << 20 : 1024 << 20
+    }()
 
     /// True once the region is held. The memory budget needs this: after a
     /// prewarm the JIT is already counted in the footprint, so subtracting it

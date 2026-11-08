@@ -163,7 +163,7 @@ struct MouseButton: View {
     var body: some View {
         Text(title)
             .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(down ? Desk.text : Desk.dim)
+            .foregroundColor(down ? Desk.text : Desk.dim)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(down ? Desk.raised : Color.clear)
             .contentShape(Rectangle())

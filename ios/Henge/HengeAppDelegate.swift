@@ -10,7 +10,13 @@ final class HengeAppDelegate: NSObject, UIApplicationDelegate {
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
         let config = UISceneConfiguration(name: nil, sessionRole: session.role)
         HengeLog.log("display", "scene configuration asked for role \(session.role.rawValue)")
-        if session.role == .windowExternalDisplayNonInteractive, LegacyExternalDisplay.offeredToAppDelegate {
+        #if HENGE_LEGACY
+        // The typed role arrives with iOS 16; on 14 and 15 it is the string.
+        let external = UISceneSession.Role(rawValue: "UIWindowSceneSessionRoleExternalDisplayNonInteractive")
+        #else
+        let external: UISceneSession.Role = .windowExternalDisplayNonInteractive
+        #endif
+        if session.role == external, LegacyExternalDisplay.offeredToAppDelegate {
             config.delegateClass = ExternalDisplaySceneDelegate.self
         }
         return config

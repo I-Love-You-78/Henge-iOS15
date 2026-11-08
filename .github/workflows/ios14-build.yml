@@ -1,0 +1,57 @@
+name: iOS 14 / A9 build
+
+# Builds Henge for iOS 14 and later (iPhone 6s / SE and up) on a GitHub macOS
+# runner and uploads the unsigned-but-ad-hoc-signed .ipa. Nothing here needs a
+# Husk checkout: this build has no libslirp/glib and no StikJIT, so the whole
+# toolchain is Xcode, xcodegen and cmake, all present on the image.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios14]
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the toolchain
+        run: |
+          set -e
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i -E "ios|iphoneos" || true
+          cmake --version | head -1
+
+      - name: Install xcodegen
+        run: |
+          set -e
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+          xcodegen --version
+
+      - name: Build the engine (iOS 14, no guest network)
+        run: |
+          set -e
+          make ios-lib HENGE_NO_NET=1 IOS_MIN=14.0 build/henge-agent.gz
+
+      - name: Build the installer stack
+        run: |
+          set -e
+          IOS_MIN=14.0 ./tools/build_ios_restore.sh
+
+      - name: Build and package the app
+        run: |
+          set -e
+          mkdir -p build/out
+          HENGE_OUT="$PWD/build/out/Henge-iOS14.ipa" ./ios/scripts/package_legacy_ipa.sh
+
+      - name: Upload the .ipa
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Henge-iOS14-${{ github.run_number }}
+          path: |
+            build/out/*.ipa
+            ios/build/DerivedData-legacy.buildlog
+          if-no-files-found: warn
+          retention-days: 30

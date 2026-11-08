@@ -62,7 +62,7 @@ struct SessionView: View {
                                 Text("Use the trackpad, keyboard or a connected mouse.")
                                     .font(.subheadline)
                             }
-                            .foregroundStyle(.white)
+                            .foregroundColor(.white)
                             .multilineTextAlignment(.center)
                             .padding()
                             .accessibilityElement(children: .combine)
@@ -87,7 +87,7 @@ struct SessionView: View {
                 if pointerRefused && !showRevealHint {
                     Label("Make Henge full screen to use the trackpad or mouse as the Mac's", systemImage: "cursorarrow.rays")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundColor(.white)
                         .padding(.horizontal, 18).padding(.vertical, 12)
                         .deskGlass(in: Capsule())
                         .position(x: full.width / 2, y: insets.top + 40)
@@ -97,7 +97,7 @@ struct SessionView: View {
                 if showRevealHint {
                     Label("Tap with three fingers to show the controls", systemImage: "hand.tap")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundColor(.white)
                         .padding(.horizontal, 18).padding(.vertical, 12)
                         .deskGlass(in: Capsule())
                         .position(x: full.width / 2, y: insets.top + 40)
@@ -109,10 +109,10 @@ struct SessionView: View {
             }
             .frame(width: full.width, height: full.height)
             .ignoresSafeArea()
-            .animation(.easeInOut(duration: 0.25), value: zoomed)
-            .animation(.easeInOut(duration: 0.25), value: typing)
-            .animation(.easeInOut(duration: 0.25), value: controlsHidden)
-            .animation(.easeInOut(duration: 0.25), value: showRevealHint)
+            .animation(.easeInOut(duration: 0.25))
+            .animation(.easeInOut(duration: 0.25))
+            .animation(.easeInOut(duration: 0.25))
+            .animation(.easeInOut(duration: 0.25))
             .onReceive(NotificationCenter.default.publisher(for: UIPointerLockState.didChangeNotification)) { _ in
                 pointerRefused = PointerLock.refused
             }
@@ -127,13 +127,12 @@ struct SessionView: View {
             .onChange(of: layout.shown) { shown = $0 }
         }
         .statusBarHidden(zoomed || Device.isPad)
-        .persistentSystemOverlays(.hidden)
+        .compatHideSystemOverlays()
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showDetails) { details }
-        .confirmationDialog("Shut down \(mac.name)?", isPresented: $confirmStop, titleVisibility: .visible) {
-            Button("Shut Down", role: .destructive) { finish() }
-        } message: {
-            Text("This turns the Mac off at once. Anything not saved on it is lost.")
+        .compatConfirm("Shut down \(mac.name)?", message: "This turns the Mac off at once. Anything not saved on it is lost.",
+                       isPresented: $confirmStop, confirm: "Shut Down") {
+            finish()
         }
         .onChange(of: zoomed) { on in
             zoomFollowing?.cancel()
@@ -166,8 +165,8 @@ struct SessionView: View {
             HardwareMouse.shared.stop()
         }
         .modifier(ExternalMacDisplayModifier(presentation: MacPresentation(display: display, aspect: mac.aspect)))
-        .task { await run() }
-        .task { await Sharing.followMacClipboard() }
+        .compatTask { await run() }
+        .compatTask { await Sharing.followMacClipboard() }
     }
 
     /// When there is something of the app's to point at, iPadOS gets its own pointer back.
@@ -261,7 +260,7 @@ struct SessionView: View {
             }
             .padding(.horizontal, 22)
             .frame(width: layout.pad.width, height: 54)
-            .background(Desk.card, in: Capsule())
+            .background(Capsule().fill(Desk.card))
             .overlay(Capsule().stroke(Desk.hairline, lineWidth: 0.5))
             .position(x: layout.pad.midX, y: layout.toolsY + 27)
             .transition(.opacity)
@@ -275,7 +274,7 @@ struct SessionView: View {
             ZStack {
                 Trackpad()
                 if compact {
-                    Text("Trackpad").font(.system(size: 14)).foregroundStyle(Desk.faint).allowsHitTesting(false)
+                    Text("Trackpad").font(.system(size: 14)).foregroundColor(Desk.faint).allowsHitTesting(false)
                 } else {
                     VStack(spacing: 6) {
                         hint("Drag", "to move")
@@ -313,7 +312,7 @@ struct SessionView: View {
         }
         .labelStyle(.iconOnly)
         .buttonBorderShape(.circle)
-        .tint(Desk.raised)
+        .accentColor(Desk.raised)
     }
 
     /// Hides the session's controls; three fingers on the screen bring them back. The first few times say so.
@@ -330,7 +329,7 @@ struct SessionView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(tint)
+                .foregroundColor(tint)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
@@ -420,12 +419,12 @@ struct SessionView: View {
     private func errorCard(_ text: String, _ layout: Layout) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("This Mac could not start").font(.system(size: 17, weight: .semibold))
-            Text(text).font(.system(size: 14)).foregroundStyle(Desk.dim)
-            Button("Close") { close() }.font(.system(size: 15, weight: .semibold)).foregroundStyle(Desk.accentLight)
+            Text(text).font(.system(size: 14)).foregroundColor(Desk.dim)
+            Button("Close") { close() }.font(.system(size: 15, weight: .semibold)).foregroundColor(Desk.accentLight)
         }
         .padding(18)
         .frame(width: min(layout.touch.width, 390) - 32, alignment: .leading)
-        .background(Desk.raised, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Desk.raised))
         .position(x: (layout.fillsPhone ? layout.touch.midX : layout.pad.midX), y: layout.fillsPhone ? layout.touch.midY : layout.pad.midY)
     }
 
@@ -438,21 +437,21 @@ struct SessionView: View {
     }
 
     private var details: some View {
-        NavigationStack {
+        CompatNavigationStack {
             List {
                 Section(phase) {
-                    LabeledContent("CPUs on", value: "\(cpusOn) of \(cpus)")
-                    LabeledContent("iPad thermal", value: Self.thermalLabel(thermalState))
-                    LabeledContent("Translated blocks", value: String(format: "%.1f M/s", blocksPerSecond / 1e6))
-                    LabeledContent("Network frames", value: "\(framesOut) out, \(framesIn) in")
-                    LabeledContent("Up", value: "\(Int(Date().timeIntervalSince(started))) s")
+                    LCRow("CPUs on", "\(cpusOn) of \(cpus)")
+                    LCRow("iPad thermal", Self.thermalLabel(thermalState))
+                    LCRow("Translated blocks", String(format: "%.1f M/s", blocksPerSecond / 1e6))
+                    LCRow("Network frames", "\(framesOut) out, \(framesIn) in")
+                    LCRow("Up", "\(Int(Date().timeIntervalSince(started))) s")
                 }
                 Section("Display") {
                     Toggle("Color matching", isOn: $matchScreenColors)
-                    LabeledContent("Brightness", value: "\(Int(screenBrightness * 100))%")
+                    LCRow("Brightness", "\(Int(screenBrightness * 100))%")
                     Slider(value: $screenBrightness, in: 0.4...1)
                     Text("Brightness dims only the Mac's screen.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundColor(.secondary)
                 }
                 Section("Pointer") {
                     Picker("Size", selection: $cursorScale) {
@@ -462,13 +461,13 @@ struct SessionView: View {
                     }
                     .pickerStyle(.segmented)
                     Toggle("Sharp edges", isOn: $sharpCursor)
-                    LabeledContent("Scroll speed", value: String(format: "%.1f×", scrollSpeed))
+                    LCRow("Scroll speed", String(format: "%.1f×", scrollSpeed))
                     Slider(value: $scrollSpeed, in: 0.1...1.5)
                     Text("The Mac supplies a small pointer image. Enlarging it can look blurry; 1× is the sharpest on an iPad. Scroll speed changes apply immediately.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundColor(.secondary)
                 }
                 Section("Sharing") {
-                    LabeledContent("Clipboard and folder", value: helperRunning ? "On" : "Not set up")
+                    LCRow("Clipboard and folder", helperRunning ? "On" : "Not set up")
                     if !helperRunning {
                         Button("Type the Set Up Command") {
                             showDetails = false
@@ -481,12 +480,12 @@ struct SessionView: View {
                     Text(helperRunning
                          ? "Put files in Files, Henge, Shared to see them in the Henge folder in this Mac's home folder. What you copy on the Mac is copied here too, and the paste button pastes from here into the Mac."
                          : "Once for each Mac: open Terminal on the Mac, tap this, then press Return. When macOS asks about henge-agent and local networks, choose Allow. It types \(Sharing.setUpCommand) and needs the Mac's keyboard layout to be U.S.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundColor(.secondary)
                 }
                 Section("Log") {
                     VStack(alignment: .leading, spacing: 1) {
                         ForEach(Array(log.suffix(30).enumerated()), id: \.offset) { _, line in
-                            Text(line).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                            Text(line).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary)
                         }
                     }
                 }

@@ -186,13 +186,20 @@ final class Installer: NSObject, ObservableObject {
 
     // MARK: The restore
 
+    /// What the Mac's own restore system is given, in MB. Apple's restore expects
+    /// 2 GB; a 2 GB iPhone is given 1.5 GB because that is all it can spare.
+    static var installRAMFloorMB: Int { Device.lowMemoryDevice ? 1_536 : 2_048 }
+
     private func install(_ mac: VirtualMac, ipsw: URL, cpus: Int) async throws {
         guard JITBootstrap.ready else { throw message("Turn on JIT first: the installer runs the Mac's own restore system, which needs it.") }
-        // The restore needs 2 GB, whatever the Mac is set to use afterwards.
+        // The restore needs 2 GB, whatever the Mac is set to use afterwards. A 2 GB
+        // iPhone cannot leave 2 GB free, so it is offered 1.5 GB instead
+        // (docs/ios14-a9-support.md); the restore system may refuse to run there.
+        let floor = Self.installRAMFloorMB
         var restoring = mac
-        restoring.ramMB = max(mac.ramMB, 2048)
+        restoring.ramMB = max(mac.ramMB, floor)
         let ram = GuestMemory.prepare(restoring)
-        guard ram >= 2048 else { throw message("Installing needs a few more GB of free storage for the Mac's memory.") }
+        guard ram >= floor else { throw message("Installing needs about \(Device.ramText(floor)) for the Mac's memory, and this \(Device.name) cannot spare it.") }
         let work = mac.directory.appendingPathComponent("restore", isDirectory: true)
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         var buffer = [CChar](repeating: 0, count: 256)

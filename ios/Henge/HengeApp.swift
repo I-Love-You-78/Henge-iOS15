@@ -57,7 +57,7 @@ struct RootView: View {
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                     .tag(Tab.settings)
             }
-            .tint(Desk.accentLight)
+            .accentColor(Desk.accentLight)
             if let running {
                 SessionView(mac: running) { self.running = nil }
                     .transition(.opacity)
@@ -76,9 +76,11 @@ struct RootView: View {
     }
 }
 
+#if !HENGE_LEGACY
 extension View {
     /// Husk's screens are written against an iOS 15 shim; Henge needs iOS 17, so this is the real thing.
     func hengeDestination<D: Hashable, C: View>(for data: D.Type, @ViewBuilder destination: @escaping (D) -> C) -> some View {
         navigationDestination(for: data, destination: destination)
     }
 }
+#endif

@@ -26,15 +26,17 @@ struct MacSettingsView: View {
                 DeskHeading("Memory")
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("\(mac.ramMB / 1024) GB").font(.system(size: 26, weight: .bold))
+                        Text(Device.ramText(mac.ramMB)).font(.system(size: 26, weight: .bold))
                         Spacer()
                         Text(Entitlements.increasedMemory ? "Outside the app's limit once JIT is on" : "Used from free storage if needed")
-                            .font(.system(size: 13)).foregroundStyle(Desk.dim).multilineTextAlignment(.trailing)
+                            .font(.system(size: 13)).foregroundColor(Desk.dim).multilineTextAlignment(.trailing)
                     }
-                    Stepper("Memory", value: Binding(get: { mac.ramMB / 1024 }, set: { mac.ramMB = $0 * 1024; save() }), in: Device.memoryChoices)
+                    Stepper("Memory", value: Binding(get: { mac.ramMB }, set: { mac.ramMB = $0; save() }),
+                            in: (Device.ramChoicesMB.first ?? 1_024)...(Device.ramChoicesMB.last ?? 16_384),
+                            step: Device.ramStepMB)
                         .font(.system(size: 16))
-                    if let note = Device.memoryNote(mac.ramMB / 1024) {
-                        Text(note).font(.system(size: 13)).foregroundStyle(Desk.dim)
+                    if let note = Device.ramNote(mac.ramMB) {
+                        Text(note).font(.system(size: 13)).foregroundColor(Desk.dim)
                     }
                 }
                 .padding(17)
@@ -80,7 +82,7 @@ struct MacSettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         Text("\(mac.screen.width) × \(mac.screen.height). \(Device.isPad ? "Performance renders about 30% fewer pixels. " : "")Changes apply the next time this Mac starts.")
-                            .font(.system(size: 13)).foregroundStyle(Desk.dim)
+                            .font(.system(size: 13)).foregroundColor(Desk.dim)
                     }
                     .padding(17)
                     .deskCard()
@@ -91,7 +93,7 @@ struct MacSettingsView: View {
                     HStack {
                         Text("\(ByteText.string(UInt64(max(mac.bytesUsed, 0)))) used").font(.system(size: 16))
                         Spacer()
-                        Text("of \(ByteText.string(UInt64(max(mac.diskBytes, 0))))").font(.system(size: 16)).foregroundStyle(Desk.dim)
+                        Text("of \(ByteText.string(UInt64(max(mac.diskBytes, 0))))").font(.system(size: 16)).foregroundColor(Desk.dim)
                     }
                     DeskBar(fraction: Double(mac.bytesUsed) / Double(max(mac.diskBytes, 1)))
                 }
@@ -115,13 +117,10 @@ struct MacSettingsView: View {
             case .failure(let error): machines.lastError = error.localizedDescription
             }
         }
-        .confirmationDialog("Delete \(mac.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                machines.delete(mac.id)
-                dismiss()
-            }
-        } message: {
-            Text("Its disk is removed from this \(Device.name).")
+        .compatConfirm("Delete \(mac.name)?", message: "Its disk is removed from this \(Device.name).",
+                       isPresented: $confirmDelete, confirm: "Delete") {
+            machines.delete(mac.id)
+            dismiss()
         }
     }
 
@@ -140,9 +139,9 @@ struct MacSettingsView: View {
                 divider
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Saved in Files, under Henge, Exports, \(folder.lastPathComponent). Deleting Henge deletes it too, so move it somewhere else first.")
-                        .font(.system(size: 13)).foregroundStyle(Desk.dim)
+                        .font(.system(size: 13)).foregroundColor(Desk.dim)
                     Button("Move Out of Henge…") { movingExport = true }
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Desk.accentLight)
+                        .font(.system(size: 15, weight: .semibold)).foregroundColor(Desk.accentLight)
                 }
                 .padding(17)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -158,9 +157,9 @@ struct MacSettingsView: View {
     private func row(_ title: String, symbol: String?, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
-                Text(title).font(.system(size: 16)).foregroundStyle(tint)
+                Text(title).font(.system(size: 16)).foregroundColor(tint)
                 Spacer()
-                if let symbol { Image(systemName: symbol).foregroundStyle(tint) }
+                if let symbol { Image(systemName: symbol).foregroundColor(tint) }
             }
             .padding(.horizontal, 17)
             .padding(.vertical, 14)

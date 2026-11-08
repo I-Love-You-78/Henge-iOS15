@@ -4,7 +4,7 @@ CFLAGS = -std=c11 -Wall -Wextra -O2 -g -Icore -Ihost -Idevices
 B = build
 
 CORE = $(B)/classify.o $(B)/operands.o $(B)/translate.o $(B)/dispatch.o $(B)/mmu.o $(B)/memop.o \
-       $(B)/exception.o $(B)/sysreg.o $(B)/machine.o
+       $(B)/exception.o $(B)/sysreg.o $(B)/machine.o $(B)/hostcaps.o
 HOST = $(B)/jit_region.o $(B)/enter.o $(B)/disk.o
 DEV = $(B)/pvg_lite.o $(B)/pvg_metal.o $(B)/gicv3.o $(B)/timer.o $(B)/pl011.o $(B)/pl031.o $(B)/cfg.o $(B)/bdif.o $(B)/pcie.o \
       $(B)/virtio.o $(B)/virtio_blk.o $(B)/virtio_net.o $(B)/virtio_input.o $(B)/virtio_snd.o $(B)/virtio_usb.o $(B)/xhci.o $(B)/vmapple.o $(B)/aes.o $(B)/pl061.o
@@ -108,11 +108,19 @@ clean:
 # make ios-lib -> build/ios/libhengevm.a. Networking links the arm64 iOS builds
 # of libslirp and glib from Husk's sysroot (scripts there make them); see ios/README.md.
 IOS_SDK = $(shell xcrun --sdk iphoneos --show-sdk-path)
-IOS_CC = xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=17.0 -isysroot $(IOS_SDK)
+# The app's deployment target: 17.0 for the stock build, 14.0 for the iOS 14/A9 one
+# (see docs/ios14-a9-support.md). The C side only needs to agree with it.
+IOS_MIN ?= 17.0
+IOS_CC = xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=$(IOS_MIN) -isysroot $(IOS_SDK)
 IOS_DEPS ?= $(HOME)/Documents/Coding/Husk/build/ios-arm64/sysroot
-IOS_CFLAGS = -std=c11 -Wall -Wextra -O2 -g -Icore -Ihost -Idevices -I$(IOS_DEPS)/include/slirp
+# HENGE_NO_NET=1: no guest network, and therefore none of libslirp/glib (host/net_null.c
+# stands in). That is what the CI build uses: no Husk checkout, no cross-built glib.
+HENGE_NO_NET ?= 0
+IOS_NET = $(if $(filter 1,$(HENGE_NO_NET)),host/net_null.c,host/net_slirp.c)
+IOS_SLIRP_INC = $(if $(filter 1,$(HENGE_NO_NET)),,-I$(IOS_DEPS)/include/slirp)
+IOS_CFLAGS = -std=c11 -Wall -Wextra -O2 -g -Icore -Ihost -Idevices $(IOS_SLIRP_INC)
 IB = build/ios
-IOS_SRC = $(wildcard core/*.c) host/prof_ios.c host/jit_region.c host/disk.c host/vm.c host/net_slirp.c host/share.c host/audio_mac.c host/hvsparse.c host/usb_host.c \
+IOS_SRC = $(wildcard core/*.c) host/prof_ios.c host/jit_region.c host/disk.c host/vm.c $(IOS_NET) host/share.c host/audio_mac.c host/hvsparse.c host/usb_host.c \
           $(filter-out devices/pvg_mac.m,$(wildcard devices/*.c))
 IOS_OBJ = $(patsubst %.c,$(IB)/%.o,$(IOS_SRC)) $(IB)/host/enter.o $(IB)/devices/pvg_metal.o
 

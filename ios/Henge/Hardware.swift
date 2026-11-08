@@ -51,16 +51,70 @@ enum Device {
         return nil
     }
 
-    /// The virtual CPU offers Armv8.5 instructions (core/sysreg.c), and macOS uses them. They run as
-    /// they are, so the chip needs them too: A14, M1 and later, which is iPhone13,x and iPad13,x up.
+    // MARK: Memory in megabytes
+    //
+    // A Mac's memory is chosen in MB rather than GB so that a 2 GB iPhone (6s, SE,
+    // 7, 8) can offer the half-gigabyte steps that are all it has room for. See
+    // docs/ios14-a9-support.md: macOS wants 4 GB and up, so those devices are
+    // below what it is comfortable with whatever is chosen here.
+
+    static let physicalMB = Int(ProcessInfo.processInfo.physicalMemory >> 20)
+
+    /// A device with no room for even a 4 GB Mac: 2 GB and 3 GB iPhones.
+    static var lowMemoryDevice: Bool { physicalMB < 3_500 }
+
+    static var suggestedRAMMB: Int {
+        if lowMemoryDevice { return 1_536 }
+        return suggestedRAMGB * 1024
+    }
+
+    /// The steps the memory control offers, in MB.
+    static var ramChoicesMB: [Int] {
+        if lowMemoryDevice { return [1_024, 1_536, 2_048, 2_560] }
+        return Array(stride(from: 1_024, through: 16_384, by: 1_024))
+    }
+
+    static var ramStepMB: Int { lowMemoryDevice ? 512 : 1_024 }
+
+    /// "1.5 GB", or "512 MB" below a gigabyte.
+    static func ramText(_ mb: Int) -> String {
+        if mb < 1_024 { return "\(mb) MB" }
+        if mb % 1_024 == 0 { return "\(mb / 1_024) GB" }
+        return String(format: "%.1f GB", Double(mb) / 1_024)
+    }
+
+    static func ramNote(_ mb: Int) -> String? {
+        if lowMemoryDevice {
+            if mb >= 2_048 {
+                return "This \(name) has \(physicalMB / 1_024) GB of memory in all, so a Mac with \(ramText(mb)) is more than it can hold: iOS will close Henge when macOS gets busy. 1.5 GB is the most that leaves iOS room."
+            }
+            return "macOS wants 4 GB and up. On a \(name) with \(physicalMB / 1_024) GB, \(ramText(mb)) is all that can be given, so expect it to be very slow, or not to finish starting."
+        }
+        if mb < 4_096 { return "macOS has little room under 4 GB, so it can be very slow." }
+        if mb > suggestedRAMMB { return "More than \(ramText(suggestedRAMMB)) is a lot for this \(name): iOS may close Henge when macOS gets busy." }
+        return nil
+    }
+
+    /// The virtual CPU offers Armv8.5 instructions (core/sysreg.c), and macOS uses them. On an
+    /// A14/M1 or later they run as they are. On an older chip the ones that cannot run there
+    /// (atomics, CAS, LDAPR, LDAPUR/STLUR) are emulated in C instead — see
+    /// docs/ios14-a9-support.md — so the A9 iPhone 6s/SE, the oldest arm64 iPhones, can run it
+    /// too, experimentally.
     static let chipTooOld: Bool = {
         let model = HengeLog.deviceModel
         guard model.hasPrefix("iPhone") || model.hasPrefix("iPad"),
               let major = Int(model.drop { !$0.isNumber }.prefix { $0.isNumber }) else { return false }
+        #if HENGE_LEGACY
+        return major < 8 /* iPhone8,x is the A9 (6s, SE); iPad6,x the A9X */
+        #else
         return major < 13
+        #endif
     }()
 
     static let chipTooOldText = "macOS won't run on this \(name). Henge needs an A14 or M1 chip or newer."
+
+    /// Shown instead of the line above on the iOS 14/A9 build.
+    static let chipExperimentalText = "This \(name) has an A9 or A10 chip. Henge emulates the newer instructions macOS uses, which is slow and not yet known to reach the desktop on this chip. Expect it to fail."
 }
 
 /// A keyboard attached to the device. iOS reports each key going down and coming up by its HID usage,

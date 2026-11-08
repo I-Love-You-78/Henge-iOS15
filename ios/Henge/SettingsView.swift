@@ -13,32 +13,32 @@ struct SettingsView: View {
     @AppStorage(JITBootstrap.codeCacheKey) private var codeCacheMB = 1024
 
     var body: some View {
-        NavigationStack {
+        CompatNavigationStack {
             Form {
                 Section("JIT") {
-                    LabeledContent("Status", value: JITBootstrap.ready ? "On" : "Off")
+                    LCRow("Status", JITBootstrap.ready ? "On" : "Off")
                     Picker("Method", selection: $jit.method) {
                         ForEach(JITMethod.allCases) { Text($0.title).tag($0) }
                     }
                     Text(jit.method == .automatic ? jit.automaticDescription : "Henge uses \(jit.method.title).")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundColor(.secondary)
                     Button("Set up JIT") { jit.showSetup = true }
                     Toggle("Turn on JIT when Henge opens", isOn: $jitAtLaunch)
                     if jitAtLaunch {
                         Text("Henge connects LocalDevVPN first when it is off, and comes back.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.footnote).foregroundColor(.secondary)
                     }
-                    LabeledContent("Code region", value: "\(JITBootstrap.jitBytes >> 20) MB, claimed once per launch")
+                    LCRow("Code region", "\(JITBootstrap.jitBytes >> 20) MB, claimed once per launch")
                 }
                 .listRowBackground(Desk.card)
                 Section("Memory") {
-                    LabeledContent("Extra memory", value: Entitlements.increasedMemory ? "On" : "Off")
-                    LabeledContent("Henge's limit", value: ByteText.string(UInt64(Entitlements.memoryLimitAtLaunch)))
-                    LabeledContent("Free for Henge", value: ByteText.string(UInt64(henge_available_memory())))
+                    LCRow("Extra memory", Entitlements.increasedMemory ? "On" : "Off")
+                    LCRow("Henge's limit", ByteText.string(UInt64(Entitlements.memoryLimitAtLaunch)))
+                    LCRow("Free for Henge", ByteText.string(UInt64(henge_available_memory())))
                     Text(Entitlements.increasedMemory
                          ? "A Mac's memory is kept out of this limit once JIT is on. If iOS refuses that, it uses free storage instead."
                          : "This install isn't signed with the increased memory limit entitlement. Reinstall Henge with a certificate that has it. Export your Mac first if the reinstall replaces the app's data.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundColor(.secondary)
                 }
                 .listRowBackground(Desk.card)
                 if Device.isPad {
@@ -53,7 +53,7 @@ struct SettingsView: View {
                             Slider(value: $scrollSpeed, in: 0.1...1.5)
                         }
                         Text("A Magic Keyboard or a Bluetooth mouse moves the Mac's pointer. Pointer speed changes apply the next time a Mac starts; scroll speed changes apply immediately.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.footnote).foregroundColor(.secondary)
                     }
                     .listRowBackground(Desk.card)
                 }
@@ -71,17 +71,17 @@ struct SettingsView: View {
                         Text("1.5 GB (experimental)").tag(1536)
                     }
                     Text("A bigger code cache empties less often, at twice its size in memory. Applies the next time Henge opens. If JIT stops turning on, go back to 1 GB.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundColor(.secondary)
                     Text("60 Hz leaves more of the emulated CPU to apps. Faster disk writes order them without waiting for a full sync; a sudden power loss could lose the last ones. Quicker wake keeps an idle CPU watching for work for 50 µs, at some battery cost. Superblocks let translated code run past conditional branches. Changes apply the next time a Mac starts.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundColor(.secondary)
                 }
                 .listRowBackground(Desk.card)
                 Section("Log") {
-                    ShareLink(item: HengeLog.logFileURL) { Label("Share henge.log", systemImage: "square.and.arrow.up") }
+                    ShareButton(url: HengeLog.logFileURL) { Label("Share henge.log", systemImage: "square.and.arrow.up") }
                 }
                 .listRowBackground(Desk.card)
             }
-            .scrollContentBackground(.hidden)
+            .compatHideScrollBackground()
             .background(Desk.page)
             .navigationTitle("Settings")
         }
