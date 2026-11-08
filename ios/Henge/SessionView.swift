@@ -314,7 +314,6 @@ struct SessionView: View {
                     if let text = texts.first { Sharing.paste(text) }
                 }
                 .labelStyle(.iconOnly)
-                .buttonBorderShape(.circle)
             } else {
                 Button {
                     if let text = UIPasteboard.general.string { Sharing.paste(text) }
