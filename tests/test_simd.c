@@ -82,6 +82,34 @@ static void make_stub(void) {}
 static void run_native(uint32_t insn, uint8_t regs[64]) { (void)insn; (void)regs; }
 #endif
 
+/* A fixed input, printed as it comes back from the host: this is how the
+   complex-add and complex-multiply-add rotations were pinned down. Vn lanes are
+   1,2,3,4, Vm are 5,6,7,8 and Vd starts at 0. */
+static void probe_fc(void) {
+#if defined(__arm64__)
+    static const uint32_t words[] = {
+        0x6e82e420u, /* fcadd v0.4s, v1.4s, v2.4s, #90 */
+        0x6e82f420u, /* fcadd v0.4s, v1.4s, v2.4s, #270 */
+        0x6e82c420u, /* fcmla v0.4s, v1.4s, v2.4s, #0 */
+        0x6e82cc20u, /* fcmla ... #90 */
+        0x6e82d420u, /* fcmla ... #180 */
+        0x6e82dc20u, /* fcmla ... #270 */
+    };
+    static const char *names[] = {"fcadd #90", "fcadd #270", "fcmla #0", "fcmla #90", "fcmla #180", "fcmla #270"};
+    for (int w = 0; w < 6; w++) {
+        uint8_t regs[64];
+        memset(regs, 0, 64);
+        float vn[4] = {1, 2, 3, 4}, vm[4] = {5, 6, 7, 8};
+        memcpy(regs + 16, vn, 16);
+        memcpy(regs + 32, vm, 16);
+        run_native(words[w], regs);
+        float out[4];
+        memcpy(out, regs, 16);
+        fprintf(stderr, "probe %-10s -> %g %g %g %g\n", names[w], out[0], out[1], out[2], out[3]);
+    }
+#endif
+}
+
 /* ---- compare one instruction over random inputs ------------------------- */
 
 static void diff_case(const char *name, uint32_t insn, int rounds, int meaningful_bytes) {
@@ -226,6 +254,7 @@ static void check_no_overreach(void) {
 
 int main(void) {
     make_stub();
+    probe_fc();
     srand(12345);
     memset(&cpu, 0, sizeof cpu);
 
