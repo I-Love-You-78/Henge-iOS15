@@ -30,31 +30,38 @@ static void fail(const char *what, uint32_t insn, int case_no) {
 /* ---- a native runner: the same instruction, executed by the host ---------- */
 
 #if defined(__arm64__)
-#include <sys/mman.h>
+#include "jit_region.h"
 
-static uint32_t *stub;
+/* The stub runs from HengeVM's own JIT region shape: on macOS a plain MAP_JIT
+   mapping is not writable and executable at once and a bare mmap(PROT_EXEC) is
+   refused, so hv_jit_write's per-thread W^X toggle is what makes it work. */
+static HvJitRegion region;
 
 static void make_stub(void) {
-    stub = mmap(NULL, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (stub == MAP_FAILED) { perror("mmap"); exit(1); }
-    int i = 0;
-    stub[i++] = 0x3dc00000u;             /* ldr q0, [x0] */
-    stub[i++] = 0x3dc00401u;             /* ldr q1, [x0, #16] */
-    stub[i++] = 0x3dc00802u;             /* ldr q2, [x0, #32] */
-    stub[i++] = 0x3dc00c03u;             /* ldr q3, [x0, #48] */
-    stub[i++] = 0;                       /* the instruction under test, filled in per case */
-    stub[i++] = 0x3d800000u;             /* str q0, [x0] */
-    stub[i++] = 0x3d800401u;             /* str q1, [x0, #16] */
-    stub[i++] = 0x3d800802u;             /* str q2, [x0, #32] */
-    stub[i++] = 0x3d800c03u;             /* str q3, [x0, #48] */
-    stub[i++] = 0xd65f03c0u;             /* ret */
-    __builtin___clear_cache((char *)stub, (char *)stub + 4096);
+    if (hv_jit_region_open(&region, 4096) != 0) {
+        perror("jit region");
+        exit(1);
+    }
+    static const uint32_t code[] = {
+        0x3dc00000u, /* ldr q0, [x0] */
+        0x3dc00401u, /* ldr q1, [x0, #16] */
+        0x3dc00802u, /* ldr q2, [x0, #32] */
+        0x3dc00c03u, /* ldr q3, [x0, #48] */
+        0x00000000u, /* the instruction under test, filled in per case */
+        0x3d800000u, /* str q0, [x0] */
+        0x3d800401u, /* str q1, [x0, #16] */
+        0x3d800802u, /* str q2, [x0, #32] */
+        0x3d800c03u, /* str q3, [x0, #48] */
+        0xd65f03c0u, /* ret */
+    };
+    memcpy(region.base, code, sizeof code);
+    hv_jit_finish(&region, region.base, 10);
 }
 
 static void run_native(uint32_t insn, uint8_t regs[64]) {
-    stub[4] = insn;
-    __builtin___clear_cache((char *)stub, (char *)stub + 4096);
-    ((void (*)(void *))stub)(regs);
+    hv_jit_write(&region, region.base + 4, &insn, 4);
+    hv_jit_finish(&region, region.base + 4, 1);
+    ((void (*)(void *))region.base)(regs);
 }
 #else
 static void make_stub(void) {}

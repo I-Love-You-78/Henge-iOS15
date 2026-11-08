@@ -45,7 +45,7 @@ static void vec_put(HvCpu *cpu, int r, V128 v) {
     if ((r & 31) != 31) memcpy(&cpu->v[r & 31], v.b, 16);
 }
 
-static int lanes(int q, int bytes) { return (q ? 16 : 8) / bytes; }
+__attribute__((unused)) static int lanes(int q, int bytes) { return (q ? 16 : 8) / bytes; }
 
 static uint64_t lane_get(const V128 *v, int i, int bytes) {
     uint64_t out = 0;
@@ -150,10 +150,10 @@ static uint16_t double_to_half(double d) {
     return (uint16_t)(sign | (uint16_t)((unbiased + 15) << 10) | (uint16_t)(q & 0x3ff));
 }
 
-static uint16_t float_to_half(float f) { return double_to_half((double)f); }
+__attribute__((unused)) static uint16_t float_to_half(float f) { return double_to_half((double)f); }
 
 /* FP16 arithmetic: the operand and result are binary16 bit patterns. */
-static uint16_t half_arith(int op, uint16_t a, uint16_t b) {
+__attribute__((unused)) static uint16_t half_arith(int op, uint16_t a, uint16_t b) {
     double x = (double)half_to_float(a), y = (double)half_to_float(b);
     double r;
     switch (op) {
