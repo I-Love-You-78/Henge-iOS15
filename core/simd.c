@@ -534,8 +534,9 @@ int hv_simd_emulate(HvCpu *cpu, uint32_t insn, uint64_t pc) {
     case HV_SIMD_CRC32:
     case HV_SIMD_CRC32C: {
         int bytes = (op.op == 3) ? 8 : (1 << op.op); /* B, H, W, X */
-        uint64_t value = gpr(cpu, op.rn);
-        uint32_t crc = (uint32_t)gpr(cpu, op.rd);
+        /* CRC32B Wd, Wn, Wm: the running value comes from Wn and the data from Wm. */
+        uint64_t value = gpr(cpu, op.rm);
+        uint32_t crc = (uint32_t)gpr(cpu, op.rn);
         crc = crc32_bytes(crc, value, bytes, op.family == HV_SIMD_CRC32C);
         set_gpr(cpu, op.rd, crc);
         return 0;
