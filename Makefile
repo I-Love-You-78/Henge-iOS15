@@ -108,8 +108,8 @@ clean:
 # make ios-lib -> build/ios/libhengevm.a. Networking links the arm64 iOS builds
 # of libslirp and glib from Husk's sysroot (scripts there make them); see ios/README.md.
 IOS_SDK = $(shell xcrun --sdk iphoneos --show-sdk-path)
-# The app's deployment target: 17.0 for the stock build, 14.0 for the iOS 14/A9 one
-# (see docs/ios14-a9-support.md). The C side only needs to agree with it.
+# The app's deployment target: 17.0 for the stock build, 14.0 for the iOS 15/A9 one
+# (see docs/ios15-a9-support.md). The C side only needs to agree with it.
 IOS_MIN ?= 17.0
 IOS_CC = xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=$(IOS_MIN) -isysroot $(IOS_SDK)
 IOS_DEPS ?= $(HOME)/Documents/Coding/Husk/build/ios-arm64/sysroot

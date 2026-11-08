@@ -55,7 +55,7 @@ enum Device {
     //
     // A Mac's memory is chosen in MB rather than GB so that a 2 GB iPhone (6s, SE,
     // 7, 8) can offer the half-gigabyte steps that are all it has room for. See
-    // docs/ios14-a9-support.md: macOS wants 4 GB and up, so those devices are
+    // docs/ios15-a9-support.md: macOS wants 4 GB and up, so those devices are
     // below what it is comfortable with whatever is chosen here.
 
     static let physicalMB = Int(ProcessInfo.processInfo.physicalMemory >> 20)
@@ -98,7 +98,7 @@ enum Device {
     /// The virtual CPU offers Armv8.5 instructions (core/sysreg.c), and macOS uses them. On an
     /// A14/M1 or later they run as they are. On an older chip the ones that cannot run there
     /// (atomics, CAS, LDAPR, LDAPUR/STLUR) are emulated in C instead — see
-    /// docs/ios14-a9-support.md — so the A9 iPhone 6s/SE, the oldest arm64 iPhones, can run it
+    /// docs/ios15-a9-support.md — so the A9 iPhone 6s/SE, the oldest arm64 iPhones, can run it
     /// too, experimentally.
     static let chipTooOld: Bool = {
         let model = HengeLog.deviceModel
@@ -113,7 +113,7 @@ enum Device {
 
     static let chipTooOldText = "macOS won't run on this \(name). Henge needs an A14 or M1 chip or newer."
 
-    /// Shown instead of the line above on the iOS 14/A9 build.
+    /// Shown instead of the line above on the iOS 15/A9 build.
     static let chipExperimentalText = "This \(name) has an A9 or A10 chip. Henge emulates the newer instructions macOS uses, which is slow and not yet known to reach the desktop on this chip. Expect it to fail."
 }
 

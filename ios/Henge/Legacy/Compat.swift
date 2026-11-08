@@ -2,9 +2,9 @@
 //
 // One source tree, two deployment targets.
 //
-// The iOS 14/A9 build (docs/ios14-a9-support.md) has to compile against iOS 14
+// The iOS 15/A9 build (docs/ios15-a9-support.md) has to compile against iOS 14
 // APIs, so everything the app uses that arrived later lives here as a shim with
-// an `#available` branch: iOS 16 and later get the real API, iOS 14 and 15 get
+// an `#available` branch: iOS 16 and later get the real API, iOS 15 gets
 // the nearest equivalent. The iOS 17/26 build uses the same shims and gets the
 // real thing, so the two builds cannot drift apart.
 import SwiftUI

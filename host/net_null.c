@@ -1,6 +1,6 @@
 /* The guest's virtio-net with no NAT behind it.
  *
- * Henge's networking needs libslirp and glib, which the iOS 14/A9 build does
+ * Henge's networking needs libslirp and glib, which the iOS 15/A9 build does
  * not link (they are built from a Husk checkout, and the point of that build is
  * a toolchain-free CI). The NIC the board creates still has to answer: with no
  * user-mode network attached, the guest sees a link with nothing behind it and

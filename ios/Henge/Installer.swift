@@ -194,7 +194,7 @@ final class Installer: NSObject, ObservableObject {
         guard JITBootstrap.ready else { throw message("Turn on JIT first: the installer runs the Mac's own restore system, which needs it.") }
         // The restore needs 2 GB, whatever the Mac is set to use afterwards. A 2 GB
         // iPhone cannot leave 2 GB free, so it is offered 1.5 GB instead
-        // (docs/ios14-a9-support.md); the restore system may refuse to run there.
+        // (docs/ios15-a9-support.md); the restore system may refuse to run there.
         let floor = Self.installRAMFloorMB
         var restoring = mac
         restoring.ramMB = max(mac.ramMB, floor)

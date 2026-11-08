@@ -66,7 +66,7 @@ enum JITBootstrap {
     ///
     /// A 2 GB iPhone (6s, SE, 7, 8) cannot spare a gigabyte for translated code on top of the guest's memory, so it
     /// gets 256 MB: the translator flushes and starts over when the region fills, which costs the code it had
-    /// translated, so a Mac there runs slower still (docs/ios14-a9-support.md).
+    /// translated, so a Mac there runs slower still (docs/ios15-a9-support.md).
     static let jitBytes: Int = {
         if Device.lowMemoryDevice { return 256 << 20 }
         return UserDefaults.standard.integer(forKey: codeCacheKey) == 1536 ? 1536 << 20 : 1024 << 20

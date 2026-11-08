@@ -1,9 +1,9 @@
 name: Henge
-# The iOS 14 / A9 spec: same sources as project.yml, built for iOS 14 and without
-# the pieces that only exist on later iOS. Used by ios/scripts/package_legacy_ipa.sh
-# and .github/workflows/ios14-build.yml. See docs/ios14-a9-support.md.
+# The iOS 15 / A9 spec: same sources as project.yml, built for iOS 15 and without
+# the pieces that only exist on later iOS. Used by ios/scripts/package_ios15_ipa.sh
+# and .github/workflows/ios15-build.yml. See docs/ios15-a9-support.md.
 #
-#   xcodegen generate --spec ios/project-legacy.yml --project ios
+#   xcodegen generate --spec ios/project-ios15.yml --project ios
 #
 options:
   bundleIdPrefix: com.henge
@@ -13,7 +13,7 @@ options:
 
 settings:
   base:
-    HENGE_BUNDLE_IDENTIFIER: com.henge.app.ios14
+    HENGE_BUNDLE_IDENTIFIER: com.henge.app.ios15
     HENGE_ENTITLEMENTS: Henge/Henge.legacy.entitlements
     ARCHS: arm64
     ONLY_ACTIVE_ARCH: YES
@@ -22,7 +22,7 @@ settings:
     SWIFT_OPTIMIZATION_LEVEL: "-O"
     GCC_OPTIMIZATION_LEVEL: "2"
     CLANG_C_LANGUAGE_STANDARD: c11
-    # HENGE_LEGACY: the iOS 14 code paths (a JIT screen of its own, no StikJIT).
+    # HENGE_LEGACY: the iOS 15 code paths (a JIT screen of its own, no StikJIT).
     # HENGE_NO_SCENE_ACCESSORY: no iOS 27 scene accessory in this SDK.
     SWIFT_ACTIVE_COMPILATION_CONDITIONS: "HENGE_LEGACY HENGE_NO_SCENE_ACCESSORY"
 

@@ -5,7 +5,7 @@
  *
  * The guest is arm64 macOS, which Apple builds for Armv8.5: its code contains
  * Armv8.1+ instructions that the translator normally copies into a block
- * unchanged. On an A9 (iPhone 6s/SE, iOS 14/15) those instructions are
+ * unchanged. On an A9 (iPhone 6s/SE, iOS 15) those instructions are
  * unallocated, and executing one is a SIGILL that kills Henge. So the
  * translator asks here first and sends anything the host cannot run to the
  * C slow path, which emulates it (core/memop.c).

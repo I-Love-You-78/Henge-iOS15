@@ -1,13 +1,17 @@
-name: iOS 14 / A9 build
+name: iOS 15 / A9 build
 
-# Builds Henge for iOS 14 and later (iPhone 6s / SE and up) on a GitHub macOS
+# Builds Henge for iOS 15 and later (iPhone 6s / SE and up) on a GitHub macOS
 # runner and uploads the unsigned-but-ad-hoc-signed .ipa. Nothing here needs a
 # Husk checkout: this build has no libslirp/glib and no StikJIT, so the whole
 # toolchain is Xcode, xcodegen and cmake, all present on the image.
+#
+# The .ipa is small on purpose: it carries the emulator and the installer, not
+# macOS. The Mac's restore image is downloaded from Apple on the device when a
+# Mac is installed (see docs/ios15-a9-support.md).
 on:
   workflow_dispatch:
   push:
-    branches: [ios14]
+    branches: [main]
 
 jobs:
   build:
@@ -29,7 +33,7 @@ jobs:
           if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
           xcodegen --version
 
-      - name: Build the engine (iOS 14, no guest network)
+      - name: Build the engine (iOS 15, no guest network)
         run: |
           set -e
           make ios-lib HENGE_NO_NET=1 IOS_MIN=15.0 build/henge-agent.gz
@@ -43,15 +47,21 @@ jobs:
         run: |
           set -e
           mkdir -p build/out
-          HENGE_OUT="$PWD/build/out/Henge-iOS14.ipa" ./ios/scripts/package_legacy_ipa.sh
+          HENGE_OUT="$PWD/build/out/Henge-iOS15.ipa" ./ios/scripts/package_ios15_ipa.sh
+
+      - name: Report what was built
+        if: always()
+        run: |
+          ls -lh build/out/*.ipa 2>/dev/null || true
+          unzip -l build/out/Henge-iOS15.ipa 2>/dev/null | tail -5 || true
 
       - name: Upload the .ipa
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Henge-iOS14-${{ github.run_number }}
+          name: Henge-iOS15-${{ github.run_number }}
           path: |
             build/out/*.ipa
-            ios/build/DerivedData-legacy.buildlog
+            ios/build/DerivedData-ios15.buildlog
           if-no-files-found: warn
           retention-days: 30

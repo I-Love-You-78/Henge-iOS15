@@ -34,9 +34,35 @@ Download macOS, install it on the device, and use it.
 
 On an iPhone 17 Pro, macOS reaches the lock screen in about 15 seconds. Discord installs, opens in about 15 seconds, logs in and sends messages.
 
+## This fork: iOS 15 and A9 (iPhone 6s / SE)
+
+This fork adds an **iOS 15+** build that runs on **A9 and newer** arm64 devices —
+the iPhone 6s and first SE included — with a GitHub Actions workflow that builds
+the `.ipa` without a Mac:
+
+- The engine no longer copies Armv8.1+ atomics (`LDADD`, `SWP`, `CAS`, `LDAPR`,
+  `LDAPUR`…) into blocks on a CPU that cannot run them: `core/hostcaps.c` asks the
+  host, and what it cannot run is emulated in C (`core/memop.c`), so an A9 does not
+  take a SIGILL.
+- The app builds for iOS 15 (`ios/project-ios15.yml`), with a thin compatibility
+  layer for what arrived in iOS 16 (`ios/Henge/Legacy/Compat.swift`) and a JIT
+  screen for the TrollStore / jailbreak route that iOS 15–16 uses
+  (`ios/Henge/Legacy/JITLegacy.swift`).
+- Guest RAM is chosen in MB and capped for 2 GB devices; the code cache drops to
+  256 MB there.
+- `.github/workflows/ios15-build.yml` builds `Henge-iOS15.ipa`
+  (`ios/scripts/package_ios15_ipa.sh`). The ipa is small on purpose: it holds the
+  emulator, and macOS is downloaded from Apple on the device at install time.
+
+Read [docs/ios15-a9-support.md](docs/ios15-a9-support.md) for what works, what does
+not (Armv8.2 SIMD and 2 GB of RAM are the walls) and how to install it.
+
 ## Install
 
-Sideload `Henge.ipa` from [Releases](https://github.com/Leviidev/Henge/releases) with SideStore or AltStore, or install `Henge.tipa` with TrollStore or TrollStore Lite. iOS or iPadOS 17 or later, on an A14 or M1 chip or newer. So far it's tested only on an iPhone 17 Pro: iPad support is new and hasn't run on a real iPad yet.
+Sideload `Henge.ipa` from [Releases](https://github.com/Leviidev/Henge/releases)
+with SideStore or AltStore, or install `Henge.tipa` with TrollStore or TrollStore
+Lite. iOS or iPadOS 17 or later, on an A14 or M1 chip or newer. So far it's tested
+only on an iPhone 17 Pro: iPad support is new and hasn't run on a real iPad yet.
 
 - **JIT** is required: StikDebug, TrollStore (which stops at iOS 17.0), TrollStore Lite (which needs a jailbreak), a jailbreak on its own, or the StikJIT helper built into Henge (iOS 26 or later).
 - **Storage:** about 43 GB free for macOS Sequoia. That's 17 GB for the download, which you can delete afterwards, and 26 GB for the Mac.

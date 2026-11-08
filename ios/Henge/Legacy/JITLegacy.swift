@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
-// The JIT flow for the iOS 14/A9 build.
+// The JIT flow for the iOS 15/A9 build.
 //
 // The stock app's JIT screen is written around what arrived with later iOS:
 // StikDebug (iOS 17.4 and later), the built-in StikJIT helper app extension
