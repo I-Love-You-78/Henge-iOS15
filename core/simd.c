@@ -377,6 +377,7 @@ static void do_dot(HvCpu *cpu, const HvSimdOp *op) {
         }
         lane_put(&d, i, 4, (uint32_t)acc);
     }
+    if (!op->q) memset(d.b + 8, 0, 8); /* a Q = 0 result is 64 bits wide: the upper half is zeroed */
     vec_put(cpu, op->rd, d);
 }
 
@@ -393,6 +394,7 @@ static void do_fmlal(HvCpu *cpu, const HvSimdOp *op) {
         acc = (float)((double)acc + (subtract ? -product : product));
         memcpy(d.b + i * 4, &acc, 4);
     }
+    if (!op->q) memset(d.b + 8, 0, 8);
     vec_put(cpu, op->rd, d);
 }
 
@@ -412,6 +414,7 @@ static void do_rdm(HvCpu *cpu, const HvSimdOp *op) {
             int32_t r = sum > INT32_MAX ? INT32_MAX : sum < INT32_MIN ? INT32_MIN : (int32_t)sum;
             lane_put(&d, i, 4, (uint32_t)r);
         }
+        if (!op->q) memset(d.b + 8, 0, 8);
         vec_put(cpu, op->rd, d);
         return;
     }
@@ -424,6 +427,7 @@ static void do_rdm(HvCpu *cpu, const HvSimdOp *op) {
             int16_t r = sat16((int32_t)acc + (subtract ? -add : add));
             lane_put(&d, i, 2, (uint16_t)r);
         }
+        if (!op->q) memset(d.b + 8, 0, 8);
         vec_put(cpu, op->rd, d);
     }
 }
@@ -480,6 +484,7 @@ static void do_fcadd(HvCpu *cpu, const HvSimdOp *op, int lanes, int dbl) {
             memcpy(d.b + i * 4, &re, 4); memcpy(d.b + (i + 1) * 4, &im, 4);
         }
     }
+    if (!op->q) memset(d.b + 8, 0, 8);
     vec_put(cpu, op->rd, d);
 }
 
@@ -513,6 +518,7 @@ static void do_fcmla(HvCpu *cpu, const HvSimdOp *op, int lanes, int dbl) {
             f = (float)dio; memcpy(d.b + (i + 1) * 4, &f, 4);
         }
     }
+    if (!op->q) memset(d.b + 8, 0, 8);
     vec_put(cpu, op->rd, d);
 }
 

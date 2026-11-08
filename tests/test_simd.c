@@ -22,7 +22,7 @@ static HvCpu cpu;
 static int failures;
 static int cases;
 
-static void fail(const char *what, uint32_t insn, int case_no) {
+__attribute__((unused)) static void fail(const char *what, uint32_t insn, int case_no) {
     fprintf(stderr, "FAIL %s (insn %08x) case %d\n", what, insn, case_no);
     failures++;
 }
@@ -72,6 +72,7 @@ static void run_native(uint32_t insn, uint8_t regs[64]) { (void)insn; (void)regs
 
 static void diff_case(const char *name, uint32_t insn, int rounds, int meaningful_bytes) {
 #if defined(__arm64__)
+    int shown = 0;
     for (int c = 0; c < rounds; c++) {
         uint8_t regs[64];
         for (int i = 0; i < 64; i++) regs[i] = (uint8_t)(rand() & 0xff);
@@ -102,8 +103,10 @@ static void diff_case(const char *name, uint32_t insn, int rounds, int meaningfu
         memcpy(emulated + 48, &cpu.v[3], 16);
         cases++;
         if (memcmp(native, emulated, 64) != 0) {
-            if (failures == 0) {
-                fprintf(stderr, "  input    :");
+            failures++;
+            if (shown < 2) {
+                shown++;
+                fprintf(stderr, "FAIL %s (insn %08x) case %d\n  input    :", name, insn, c);
                 for (int i = 0; i < 64; i++) fprintf(stderr, "%s%02x", (i % 16) ? "" : " |", regs[i]);
                 fprintf(stderr, "\n  native   :");
                 for (int i = 0; i < 64; i++) fprintf(stderr, "%s%02x", (i % 16) ? "" : " |", native[i]);
@@ -111,8 +114,6 @@ static void diff_case(const char *name, uint32_t insn, int rounds, int meaningfu
                 for (int i = 0; i < 64; i++) fprintf(stderr, "%s%02x", (i % 16) ? "" : " |", emulated[i]);
                 fprintf(stderr, "\n");
             }
-            fail(name, insn, c);
-            return;
         }
     }
 #else
