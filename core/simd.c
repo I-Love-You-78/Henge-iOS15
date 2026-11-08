@@ -566,11 +566,13 @@ int hv_simd_emulate(HvCpu *cpu, uint32_t insn, uint64_t pc) {
         do_sha3(cpu, &op);
         return 0;
     case HV_SIMD_FCADD:
-        do_fcadd(cpu, &op, op.q ? 4 : 2, op.size == 3);
-        return 0;
     case HV_SIMD_FCMLA:
-        do_fcmla(cpu, &op, op.q ? 4 : 2, op.size == 3);
-        return 0;
+        /* Decoded, so the log can name it, but not emulated: the differential test
+           could not pin the rotation down against the host, and a wrong complex
+           multiply is worse than a named undefined instruction. */
+        simd_note(hv_simd_family_name(op.family), insn, pc);
+        hv_raise_undef(cpu, pc);
+        return 1;
     default:
         simd_note(hv_simd_family_name(op.family), insn, pc);
         hv_raise_undef(cpu, pc);

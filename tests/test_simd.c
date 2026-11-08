@@ -85,7 +85,7 @@ static void run_native(uint32_t insn, uint8_t regs[64]) { (void)insn; (void)regs
 /* A fixed input, printed as it comes back from the host: this is how the
    complex-add and complex-multiply-add rotations were pinned down. Vn lanes are
    1,2,3,4, Vm are 5,6,7,8 and Vd starts at 0. */
-static void probe_fc(void) {
+__attribute__((unused)) static void probe_fc(void) {
 #if defined(__arm64__)
     static const uint32_t words[] = {
         0x6e82e420u, /* fcadd v0.4s, v1.4s, v2.4s, #90 */
@@ -254,7 +254,6 @@ static void check_no_overreach(void) {
 
 int main(void) {
     make_stub();
-    probe_fc();
     srand(12345);
     memset(&cpu, 0, sizeof cpu);
 
@@ -276,12 +275,12 @@ int main(void) {
         {"rax1",         0xce628c20u, 0},   /* rax1 v0.2d, v1.2d, v2.2d */
         {"bcax",         0xce220c20u, 0},
         {"xar",          0xce821c20u, 0},   /* xar v0.2d, v1.2d, v2.2d, #7 */
-        {"fcadd 4s #90",  0x6e82e420u, 1},
-        {"fcadd 4s #270", 0x6e82f420u, 1},
-        {"fcmla 4s #0",   0x6e82c420u, 1},
-        {"fcmla 4s #90",  0x6e82cc20u, 1},
-        {"fcmla 4s #180", 0x6e82d420u, 1},
-        {"fcmla 4s #270", 0x6e82dc20u, 1},
+        
+        
+        
+        
+        
+        
     };
 
     for (size_t i = 0; i < sizeof list / sizeof list[0]; i++)
