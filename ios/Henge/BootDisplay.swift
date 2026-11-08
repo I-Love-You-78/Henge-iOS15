@@ -141,8 +141,13 @@ private struct GPUScreen: UIViewRepresentable {
             // What the screen itself is, for the colour probe (the engine logs the layer and the frames).
             let s = UIScreen.main
             let gamut = s.traitCollection.displayGamut == .P3 ? "P3" : s.traitCollection.displayGamut == .SRGB ? "sRGB" : "unspecified"
+            // The EDR headroom readings arrive with iOS 16.
+            var edr = "maxEDR=? currentEDR=?"
+            if #available(iOS 16.0, *) {
+                edr = "maxEDR=\(s.potentialEDRHeadroom) currentEDR=\(s.currentEDRHeadroom)"
+            }
             HengeLog.log("colorprobe", "colorprobe: v=1 src=swift event=screen gamut=\(gamut) scale=\(s.scale) nativeScale=\(s.nativeScale) "
-                       + "bounds=\(Int(s.bounds.width))x\(Int(s.bounds.height)) maxEDR=\(s.potentialEDRHeadroom) currentEDR=\(s.currentEDRHeadroom) "
+                       + "bounds=\(Int(s.bounds.width))x\(Int(s.bounds.height)) \(edr) "
                        + "brightness=\(String(format: "%.2f", s.brightness)) refreshHz=\(s.maximumFramesPerSecond)")
         }
         let view = Screen(display: display, role: role, surface: surface)

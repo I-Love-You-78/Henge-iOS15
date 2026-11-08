@@ -169,7 +169,8 @@ enum JITBootstrap {
     /// Whether StikDebug's script may be the debugger: the only one that answers a brk.
     private static var stikDebugMayServiceTraps: Bool {
         let method = UserDefaults.standard.string(forKey: "henge.jitMethod") ?? JITMethod.automatic.rawValue
-        return method == JITMethod.stikDebug.rawValue || (method == JITMethod.automatic.rawValue && isStikDebugInstalled)
+        // "stikDebug" as a string: the iOS 14/15 build's JITMethod has no such case.
+        return method == "stikDebug" || (method == JITMethod.automatic.rawValue && isStikDebugInstalled)
     }
 
     /// The one try at making the region without a debugger has been made (it is not repeated: the answer will not change).

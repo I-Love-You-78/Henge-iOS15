@@ -306,12 +306,23 @@ struct SessionView: View {
     }
 
     /// The system's paste button: iOS asks no permission for it, as it would if the app read the clipboard itself.
+    /// It arrives with iOS 16; before that a plain button reads the pasteboard (iOS shows its own paste notice).
     private var pasteTool: some View {
-        PasteButton(payloadType: String.self) { texts in
-            if let text = texts.first { Sharing.paste(text) }
+        Group {
+            if #available(iOS 16.0, *) {
+                PasteButton(payloadType: String.self) { texts in
+                    if let text = texts.first { Sharing.paste(text) }
+                }
+                .labelStyle(.iconOnly)
+                .buttonBorderShape(.circle)
+            } else {
+                Button {
+                    if let text = UIPasteboard.general.string { Sharing.paste(text) }
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                }
+            }
         }
-        .labelStyle(.iconOnly)
-        .buttonBorderShape(.circle)
         .accentColor(Desk.raised)
     }
 

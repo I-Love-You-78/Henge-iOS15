@@ -138,7 +138,7 @@ extension VirtualMac {
         guard let lastUsed else { return "Never" }
         if Calendar.current.isDateInToday(lastUsed) { return "Today" }
         if Calendar.current.isDateInYesterday(lastUsed) { return "Yesterday" }
-        return lastUsedDateText.monthDay(lastUsed)
+        return DateText.monthDay(lastUsed)
     }
 
     var summary: String {

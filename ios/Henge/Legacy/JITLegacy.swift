@@ -127,8 +127,8 @@ struct JITSetupFlow: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         step(1, "Install Henge with TrollStore, or from a jailbreak. A plain sideload gives an app no way to make executable memory on these iOS versions.")
-                        step(2, ready, "Turn JIT on for Henge: TrollStore › Henge › Enable JIT, or your jailbreak's \"Allow JIT in Apps\".")
-                        step(3, ready, "Open Henge and start a Mac.")
+                        step(2, "Turn JIT on for Henge: TrollStore › Henge › Enable JIT, or your jailbreak's \"Allow JIT in Apps\".", ready)
+                        step(3, "Open Henge and start a Mac.", ready)
                     }
                     .padding(14)
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Desk.card))
@@ -169,7 +169,7 @@ struct JITSetupFlow: View {
         }
     }
 
-    private func step(_ number: Int, _ done: Bool = false, _ text: String) -> some View {
+    private func step(_ number: Int, _ text: String, _ done: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 10) {
             ZStack {
                 Circle().fill(done ? Color.green.opacity(0.2) : Desk.card)

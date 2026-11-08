@@ -84,7 +84,7 @@ struct KeyboardCatcher: UIViewRepresentable {
         var onHide: () -> Void = {}
         private lazy var row: UIHostingController<ModifierRow> = {
             let host = UIHostingController(rootView: ModifierRow(hide: { [weak self] in self?.onHide() }))
-            host.sizingOptions = []
+            if #available(iOS 16.0, *) { host.sizingOptions = [] }
             host.view.backgroundColor = .clear
             host.view.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 56)
             host.view.autoresizingMask = .flexibleWidth
