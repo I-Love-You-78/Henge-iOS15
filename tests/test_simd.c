@@ -102,6 +102,15 @@ static void diff_case(const char *name, uint32_t insn, int rounds, int meaningfu
         memcpy(emulated + 48, &cpu.v[3], 16);
         cases++;
         if (memcmp(native, emulated, 64) != 0) {
+            if (failures == 0) {
+                fprintf(stderr, "  input    :");
+                for (int i = 0; i < 64; i++) fprintf(stderr, "%s%02x", (i % 16) ? "" : " |", regs[i]);
+                fprintf(stderr, "\n  native   :");
+                for (int i = 0; i < 64; i++) fprintf(stderr, "%s%02x", (i % 16) ? "" : " |", native[i]);
+                fprintf(stderr, "\n  emulated :");
+                for (int i = 0; i < 64; i++) fprintf(stderr, "%s%02x", (i % 16) ? "" : " |", emulated[i]);
+                fprintf(stderr, "\n");
+            }
             fail(name, insn, c);
             return;
         }
