@@ -152,14 +152,64 @@ restore 镜像（约 17 GB）是安装时由应用从 Apple 下载的。
 4. 安装 macOS 需要约 43 GB 空闲（17 GB 下载 + 26 GB Mac）；6s 建议先腾空间，
    或者从电脑上用 `tools/export_ios.sh` 导出一台 Mac 再放进 Files。
 
+## Armv8.1+ 指令的模拟（这是这一版的重点）
+
+macOS 的 arm64 代码默认按 `apple-m1` 编译（clang 的 Darwin 驱动对 aarch64 macOS 就返回
+`apple-m1`，而 `apple-m1` 在 LLVM 里就是 `apple-a14` 的别名），所以 guest 里出现 v8.1–v8.5
+的指令是常态，不是意外。按 LLVM 里 Apple 自己上游的 CPU 表：
+
+| CPU | 基线 | FP16 | FP16FML | DotProd | LSE | PAuth/ComplxNum/JS | SHA3 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| apple-a7（`apple-a9` 是它的别名） | v8.0a | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| apple-a10 | v8.0a + CRC/RDM | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| apple-a11 | v8.2a | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| apple-a12 | v8.3a | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+| apple-a13 | v8.4a | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| apple-a14 / `apple-m1` | v8.4a + v8.5 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+`core/simd.c` 现在模拟（编码从 QEMU 的 decodetree 模式用 `tools/decode_table.py` 提取，
+不是凭记忆写的）：
+
+| 家族 | 指令 | 怎么算 |
+| --- | --- | --- |
+| CRC32 / CRC32C | CRC32B/H/W/X、CRC32CB/CH/CW/CX | 逐字节查表，**已对标准校验值验证**（`123456789` → `CBF43926` / `E3069283`） |
+| DotProd | SDOT/UDOT（向量形式） | int8 乘积累加进 int32 lane |
+| FP16FML | FMLAL/FMLSL/FMLAL2/FMLSL2（向量） | 用 `fmaf`，单次舍入，与硬件的 fused 语义一致 |
+| RDM | SQRDMLAH/SQRDMLSH（v/s，16 位与 32 位 lane） | 饱和 + 舍入加倍乘加高半 |
+| SHA3 | EOR3 / BCAX / RAX1 / XAR | 纯位运算 |
+| JSCVT | FJCVTZS | 向零取整，越界给 INT32_MIN |
+
+**差分测试**：`tests/test_simd.c` 在 Apple Silicon 的 CI runner（`macos-15` 现在就是 arm64）
+上把每条指令先用宿主原生执行一遍，再用模拟器执行一遍，四个寄存器 64 字节逐字节比对；
+随机输入 64 轮/指令，并检查"普通 FP32/FP64 指令不能被误判成这些家族"。
+当前结果：**866 cases ok**。
+
+调试过程里被测试抓出来的三个真实错误（也是为什么值得先跑测试再上机）：
+
+1. Q=0 的 64 位形式，硬件会把目的寄存器**高 64 位清零**，原来的实现保留了原值；
+2. FMLAL/FMLSL 是 **fused**，用 double 相加会双重舍入，差 1 ulp，改用 `fmaf`；
+3. CRC32 的累加值来自 **Wn**、数据来自 **Wm**，最初写反了。
+
+仍未模拟（遇到会写一行日志并给 guest 一条未定义指令，而不是静默算错）：
+
+- 点积/FMLAL/RDM 的 **by-element** 形式；
+- **SHA512**（SHA512H/H2/SU0/SU1）——语义没把握，宁可不做；
+- **FCADD/FCMLA**（ComplxNum）——差分测试没能把 rotation 对上，降级为记录；
+- **FP16 算术与 FCVT/BFCVT**（半精度加减乘除、转换）——最可能缺的一块，下一轮补；
+- i8mm（SMMLA 等，A15+/M2+，本就不是 `apple-m1` 基线）。
+
+日志里会看到这样的行，直接告诉我们要补哪条：
+
+```
+henge: simd: fp16 is not emulated yet (insn 4e421420 at pc 1f00abcd); the guest sees an undefined instruction
+```
+
 ## 还差什么（A9 上大概会卡在哪）
 
 按可能性从高到低：
 
-1. **Armv8.2+ 的 SIMD 指令没有模拟**：`SDOT/UDOT`（点积）、FP16 形式的
-   `FMLA`/`FCVT`、`BFCVT`、`FMLAL` 等。macOS 的 vImage/Accelerate/
-   CoreGraphics 在热点里有这些指令，A9 执行同样 `SIGILL`。这一版**没有**处理
-   它们（翻译器把 SIMD 指令整类原样复制），要做得给每个编码写 C 模拟。
+1. **FP16 算术与 FCVT/BFCVT 还没模拟**：见上一节。点积、FMLAL、RDM、SHA3、
+   CRC32、JSCVT 已经过差分测试；半精度算术是下一块要补的。
 2. **内存**：1.5 GB 给 macOS + 256 MB 代码缓存 + 应用本体，在 2 GB 物理内存上
    基本贴着 jetsam 红线；即使进到桌面，开任何应用都可能被杀。
 3. **速度**：A9 单核大约 A14 的三分之一到四分之一，加上原子指令全部走 helper，

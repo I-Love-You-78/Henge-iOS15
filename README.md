@@ -40,10 +40,14 @@ This fork adds an **iOS 15+** build that runs on **A9 and newer** arm64 devices 
 the iPhone 6s and first SE included — with a GitHub Actions workflow that builds
 the `.ipa` without a Mac:
 
-- The engine no longer copies Armv8.1+ atomics (`LDADD`, `SWP`, `CAS`, `LDAPR`,
-  `LDAPUR`…) into blocks on a CPU that cannot run them: `core/hostcaps.c` asks the
-  host, and what it cannot run is emulated in C (`core/memop.c`), so an A9 does not
-  take a SIGILL.
+- The engine no longer copies Armv8.1+ instructions into blocks on a CPU that
+  cannot run them. `core/hostcaps.c` probes the host per feature (sysctl, else by
+  running the instruction under a SIGILL guard) and anything it cannot run is
+  emulated in C: atomics in `core/memop.c` (`LDADD`, `SWP`, `CAS`, `LDAPR`,
+  `LDAPUR`…), and `core/simd.c` for CRC32, SDOT/UDOT, FMLAL/FMLSL, SQRDMLAH/SH,
+  EOR3/RAX1/BCAX/XAR and FJCVTZS. `tests/test_simd.c` runs every one of those
+  natively and through the emulator on an Apple Silicon CI runner and compares all
+  lanes: 866 cases pass.
 - The app builds for iOS 15 (`ios/project-ios15.yml`), with a thin compatibility
   layer for what arrived in iOS 16 (`ios/Henge/Legacy/Compat.swift`) and a JIT
   screen for the TrollStore / jailbreak route that iOS 15–16 uses
