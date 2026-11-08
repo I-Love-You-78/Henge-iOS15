@@ -30,6 +30,12 @@ int hv_host_has_sha512(void);  /* FEAT_SHA512 (v8.2) */
 int hv_host_has_fcma(void);    /* FEAT_ComplxNum (v8.3): FCADD/FCMLA */
 int hv_host_has_jscvt(void);   /* FEAT_JSCVT (v8.3): FJCVTZS */
 
+/* Resolve every feature now, on this thread. Called once while the machine is
+   built, before any CPU thread exists: a probe installs a SIGILL handler and
+   siglongjmps, which is only safe when nothing else can fault at the same time
+   (the vCPUs would otherwise race each other through one handler). */
+void hv_host_features_resolve(void);
+
 /* Records that a feature had to be probed rather than read from a sysctl. */
 void hv_host_note_probe(void);
 

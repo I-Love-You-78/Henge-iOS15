@@ -264,6 +264,20 @@ int hv_host_has_jscvt(void) {
     return cached;
 }
 
+void hv_host_features_resolve(void) {
+    (void)hv_host_has_lse();
+    (void)hv_host_has_lrcpc2();
+    (void)hv_host_has_crc32();
+    (void)hv_host_has_rdm();
+    (void)hv_host_has_fp16();
+    (void)hv_host_has_fhm();
+    (void)hv_host_has_dotprod();
+    (void)hv_host_has_sha3();
+    (void)hv_host_has_sha512();
+    (void)hv_host_has_fcma();
+    (void)hv_host_has_jscvt();
+}
+
 const char *hv_host_feature_summary(void) {
     static char buf[320];
     if (buf[0] == '\0') {

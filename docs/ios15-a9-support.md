@@ -167,6 +167,11 @@ macOS 的 arm64 代码默认按 `apple-m1` 编译（clang 的 Darwin 驱动对 a
 | apple-a13 | v8.4a | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | apple-a14 / `apple-m1` | v8.4a + v8.5 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
+特性探针**只在 `hv_vm_create` 里、所有 vCPU 线程启动之前**跑一次：探针会用 `sigaction` +
+`siglongjmp` 试着执行一条指令，如果放到翻译路径上惰性执行，几个 CPU 线程并发进入同一个
+handler 就会跳进别人的栈——这正是两台机器（6s Plus / 8 Plus）一启动就崩在应用自身代码里的
+原因。
+
 `core/simd.c` 现在模拟（编码从 QEMU 的 decodetree 模式用 `tools/decode_table.py` 提取，
 不是凭记忆写的）：
 
@@ -224,7 +229,7 @@ henge: simd: fp16 is not emulated yet (insn 4e421420 at pc 1f00abcd); the guest 
 
 - 装好后第一次启动失败，先看 `Documents/henge.log`（应用内 Settings → Share
   henge.log）。开头会有：
-  - `host features: LSE=… LRCPC2=…` —— 是否走了模拟路径；
+  - `host features: LSE=… LRCPC2=… CRC32=… RDM=… FP16=… FHM=… DotProd=… SHA3=… SHA512=… FCMA=… JSCVT=…` —— 进 Mac 之前一次性解析（在任何 vCPU 线程启动前，见下）；
   - `TXM expected: no` —— iOS 15–16 应为 no；
   - `JIT region made by Henge itself (…)` / `MAP_JIT executes here` —— JIT 是否拿到；
   - `henge: booting with N CPUs, M MB RAM, a K MB JIT region`；

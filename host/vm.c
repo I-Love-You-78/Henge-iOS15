@@ -19,6 +19,7 @@
 
 #include "audio_mac.h"
 #include "dispatch.h"
+#include "hostcaps.h"
 #include "net_slirp.h"
 
 static HvMachine m;
@@ -126,6 +127,12 @@ static void on_ill(int sig, siginfo_t *info, void *ctx) {
     uint64_t used = (uint64_t)m.jit.used * 4;
     int in_rx = pc >= rx && pc < rx + size;
     int fetch = (uint64_t)(uintptr_t)info->si_addr == pc;
+    if (!(sig == SIGILL || in_rx || fetch)) {
+        /* A fault in Henge's own code (a bad pointer, a stack) rather than in a
+           translated block: still worth one line, or the crash looks silent. */
+        fprintf(stderr, "hengevm: signal %d at pc %llx (outside the JIT region), addr %p, lr %llx\n", sig,
+                (unsigned long long)pc, info->si_addr, (unsigned long long)uc->uc_mcontext->__ss.__lr);
+    }
     if (sig == SIGILL || in_rx || fetch) {
         fprintf(stderr, "hengevm: signal %d in translated code: pc %llx (rx %llx size %llx used %llx, pc is rx%+lld), full flushes %llu, lr %llx, addr %p\n",
                 sig, (unsigned long long)pc, (unsigned long long)rx, (unsigned long long)size, (unsigned long long)used, (long long)(pc - rx),
@@ -224,6 +231,12 @@ uint64_t hv_vm_gpu_frames(void) {
 
 int hv_vm_create(const HvVmConfig *c, char *err, size_t errlen) {
     if (!c->rom || !c->disk || !c->aux) return fail(err, errlen, "The ROM, disk and auxiliary storage are all needed.");
+    /* Which Armv8.1+ features this host has, resolved here on one thread: each
+       probe runs an instruction under a SIGILL guard, which must not happen once
+       the vCPUs are running (a fault on another thread would land in this
+       thread's handler and jump into this thread's stack). */
+    hv_host_features_resolve();
+    fprintf(stderr, "henge: host features: %s\n", hv_host_feature_summary());
     struct sigaction ill = {.sa_flags = SA_SIGINFO | SA_ONSTACK};
     ill.sa_sigaction = on_ill;
     sigaction(SIGILL, &ill, &prior_ill);
