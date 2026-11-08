@@ -12,6 +12,7 @@
 #include "exception.h"
 #include "memop.h"
 #include "mmu.h"
+#include "simd.h"
 #include "sysreg.h"
 #include "translate.h"
 
@@ -382,6 +383,8 @@ static uint32_t helper(HvCpu *cpu, const HvHelperInfo *info_in) {
     case HV_OP_FPTRAP:
         hv_raise_sync(cpu, HV_EC_FP_ACCESS, 1u << 24 | 0xeu << 20, 0, info->pc);
         return 1;
+    case HV_OP_SIMD:
+        return hv_simd_emulate(cpu, info->insn, info->pc);
     case HV_OP_CLREX:
         cpu->excl_addr = ~0ull;
         return 0;

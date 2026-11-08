@@ -5,6 +5,10 @@ name: iOS 15 / A9 build
 # Husk checkout: this build has no libslirp/glib and no StikJIT, so the whole
 # toolchain is Xcode, xcodegen and cmake, all present on the image.
 #
+# The second job is the oracle for the emulation in core/simd.c: on an Apple
+# Silicon runner every emulated instruction is executed natively first and then
+# through the emulator, and all lanes are compared bit for bit.
+#
 # The .ipa is small on purpose: it carries the emulator and the installer, not
 # macOS. The Mac's restore image is downloaded from Apple on the device when a
 # Mac is installed (see docs/ios15-a9-support.md).
@@ -14,6 +18,17 @@ on:
     branches: [main]
 
 jobs:
+  simd-test:
+    runs-on: macos-15-arm64
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the differential test for core/simd.c
+        run: |
+          set -e
+          uname -m
+          make test-simd
+
   build:
     runs-on: macos-15
     timeout-minutes: 90

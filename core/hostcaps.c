@@ -29,15 +29,15 @@ static int sysctl_flag(const char *name) {
 
 /* The definitive answer for a host whose sysctls do not name the feature: run
    the instruction and see whether it traps. The SIGILL handler is installed for
-   the duration of the probe and put back afterwards; hv_host_has_lse is first
-   called while the machine is being built, before any other thread or signal
-   handler exists.
+   the duration of the probe and put back afterwards; these run while the machine
+   is being built, before any other thread or signal handler exists.
 
-   The instructions are written as literals because `.inst` needs an immediate:
-   a parameter cannot be one. */
+   The instructions are literals because `.inst` needs an immediate. Each word
+   comes from QEMU's decodetree pattern for that instruction (see core/simd.c),
+   with the registers it needs filled in. */
 static sigjmp_buf probe_env;
 static volatile sig_atomic_t probe_faulted;
-static volatile uint32_t probe_mem[2];
+static volatile uint32_t probe_mem[4];
 
 static void probe_handler(int sig) {
     (void)sig;
@@ -61,8 +61,7 @@ static void probe_handler(int sig) {
 
 #if defined(__arm64__)
 
-/* ldadd w10, w10, [x9]: 0xb8200000 | Rs<<16 | Rn<<5 | Rt, with Rs = Rt = 10,
-   Rn = 9. */
+/* ldadd w10, w10, [x9]: 0xb8200000 | Rs<<16 | Rn<<5 | Rt. */
 static int probe_lse(void) {
     PROBE_BEGIN()
         __asm__ volatile("mov x9, %0\n"
@@ -81,12 +80,84 @@ static int probe_lrcpc2(void) {
     PROBE_END()
 }
 
+/* crc32b w10, w10, w10: 0x1ac04000 | Rm<<16 | Rn<<5 | Rd. */
+static int probe_crc32(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0x1aca414a\n" ::: "w10", "cc");
+    PROBE_END()
+}
+
+/* sqrdmlah v0.4h, v1.4h, v2.4h: 0x2e008400 | size<<22 | Rm<<16 | Rn<<5 | Rd. */
+static int probe_rdm(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0x2e428420\n" ::: "v0", "v1", "v2");
+    PROBE_END()
+}
+
+/* fadd h10, h10, h10: the scalar half form, 0x1ee01800 | ... (v8.2). */
+static int probe_fp16(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0x1ee0294a\n" ::: "h10");
+    PROBE_END()
+}
+
+/* fmlal v0.4s, v1.4h, v2.4h: 0x0e20ec00 | Rm<<16 | Rn<<5 | Rd. */
+static int probe_fhm(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0x0e22ec20\n" ::: "v0", "v1", "v2");
+    PROBE_END()
+}
+
+/* sdot v0.4s, v1.16b, v2.16b: 0x0e809400 | Rm<<16 | Rn<<5 | Rd. */
+static int probe_dotprod(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0x0e829420\n" ::: "v0", "v1", "v2");
+    PROBE_END()
+}
+
+/* eor3 v0.16b, v1.16b, v2.16b, v3.16b: 0xce000000 | Rm<<16 | Ra<<10 | Rn<<5 | Rd. */
+static int probe_sha3(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0xce020c20\n" ::: "v0", "v1", "v2", "v3");
+    PROBE_END()
+}
+
+/* sha512h q0, q1, v2.2d: 0xce608000 | Rm<<16 | Rn<<5 | Rd. */
+static int probe_sha512(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0xce628020\n" ::: "v0", "v1", "v2");
+    PROBE_END()
+}
+
+/* fcadd v0.4s, v1.4s, v2.4s, #90: 0x2e00e400 | size<<22 | Rm<<16 | Rn<<5 | Rd. */
+static int probe_fcma(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0x2e82e420\n" ::: "v0", "v1", "v2");
+    PROBE_END()
+}
+
+/* fjcvtzs w10, d10: 0x1e7e0000 | Rn<<5 | Rd. */
+static int probe_jscvt(void) {
+    PROBE_BEGIN()
+        __asm__ volatile(".inst 0x1e7e014a\n" ::: "w10");
+    PROBE_END()
+}
+
 static int probe_none(void) { return CAP_UNKNOWN; }
 
 #else /* an Apple host that is not arm64: nothing to probe with */
 
 static int probe_lse(void) { return CAP_UNKNOWN; }
 static int probe_lrcpc2(void) { return CAP_UNKNOWN; }
+static int probe_crc32(void) { return CAP_UNKNOWN; }
+static int probe_rdm(void) { return CAP_UNKNOWN; }
+static int probe_fp16(void) { return CAP_UNKNOWN; }
+static int probe_fhm(void) { return CAP_UNKNOWN; }
+static int probe_dotprod(void) { return CAP_UNKNOWN; }
+static int probe_sha3(void) { return CAP_UNKNOWN; }
+static int probe_sha512(void) { return CAP_UNKNOWN; }
+static int probe_fcma(void) { return CAP_UNKNOWN; }
+static int probe_jscvt(void) { return CAP_UNKNOWN; }
 static int probe_none(void) { return CAP_UNKNOWN; }
 
 #endif
@@ -95,6 +166,15 @@ static int probe_none(void) { return CAP_UNKNOWN; }
 
 static int probe_lse(void) { return CAP_UNKNOWN; }
 static int probe_lrcpc2(void) { return CAP_UNKNOWN; }
+static int probe_crc32(void) { return CAP_UNKNOWN; }
+static int probe_rdm(void) { return CAP_UNKNOWN; }
+static int probe_fp16(void) { return CAP_UNKNOWN; }
+static int probe_fhm(void) { return CAP_UNKNOWN; }
+static int probe_dotprod(void) { return CAP_UNKNOWN; }
+static int probe_sha3(void) { return CAP_UNKNOWN; }
+static int probe_sha512(void) { return CAP_UNKNOWN; }
+static int probe_fcma(void) { return CAP_UNKNOWN; }
+static int probe_jscvt(void) { return CAP_UNKNOWN; }
 static int probe_none(void) { return CAP_UNKNOWN; }
 
 #endif
@@ -117,50 +197,94 @@ static int resolve(const char *const *names, int nnames, int (*probe)(void), int
     return v;
 }
 
+#define CAP(name, probe, ...)                                                     \
+    do {                                                                          \
+        static const char *const names[] = {__VA_ARGS__};                         \
+        cached = resolve(names, (int)(sizeof names / sizeof names[0]), probe, 1);  \
+    } while (0)
+
 int hv_host_has_lse(void) {
     static int cached = CAP_UNKNOWN;
-    if (cached == CAP_UNKNOWN) {
-        static const char *const names[] = {"hw.optional.arm.FEAT_LSE", "hw.optional.armv8_1_atomics"};
-        cached = resolve(names, 2, probe_lse, 1);
-    }
+    if (cached == CAP_UNKNOWN) CAP(lse, probe_lse, "hw.optional.arm.FEAT_LSE", "hw.optional.armv8_1_atomics");
     return cached;
 }
 
 int hv_host_has_lrcpc2(void) {
     static int cached = CAP_UNKNOWN;
-    if (cached == CAP_UNKNOWN) {
-        static const char *const names[] = {"hw.optional.arm.FEAT_LRCPC2", "hw.optional.armv8_3"};
-        cached = resolve(names, 2, probe_lrcpc2, 1);
-    }
+    if (cached == CAP_UNKNOWN) CAP(lrcpc2, probe_lrcpc2, "hw.optional.arm.FEAT_LRCPC2", "hw.optional.armv8_3");
     return cached;
 }
 
-int hv_host_has_dotprod(void) {
+int hv_host_has_crc32(void) {
     static int cached = CAP_UNKNOWN;
-    if (cached == CAP_UNKNOWN) {
-        static const char *const names[] = {"hw.optional.arm.FEAT_DotProd", "hw.optional.armv8_2_sha3"};
-        cached = resolve(names, 2, probe_none, 1);
-    }
+    if (cached == CAP_UNKNOWN) CAP(crc32, probe_crc32, "hw.optional.arm.FEAT_CRC32", "hw.optional.armv8_crc32");
+    return cached;
+}
+
+int hv_host_has_rdm(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(rdm, probe_rdm, "hw.optional.arm.FEAT_RDM");
     return cached;
 }
 
 int hv_host_has_fp16(void) {
     static int cached = CAP_UNKNOWN;
-    if (cached == CAP_UNKNOWN) {
-        static const char *const names[] = {"hw.optional.arm.FEAT_FP16", "hw.optional.neon_fp16"};
-        cached = resolve(names, 2, probe_none, 1);
-    }
+    if (cached == CAP_UNKNOWN) CAP(fp16, probe_fp16, "hw.optional.arm.FEAT_FP16", "hw.optional.neon_fp16");
+    return cached;
+}
+
+int hv_host_has_fhm(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(fhm, probe_fhm, "hw.optional.arm.FEAT_FHM");
+    return cached;
+}
+
+int hv_host_has_dotprod(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(dotprod, probe_dotprod, "hw.optional.arm.FEAT_DotProd");
+    return cached;
+}
+
+int hv_host_has_sha3(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(sha3, probe_sha3, "hw.optional.arm.FEAT_SHA3");
+    return cached;
+}
+
+int hv_host_has_sha512(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(sha512, probe_sha512, "hw.optional.arm.FEAT_SHA512");
+    return cached;
+}
+
+int hv_host_has_fcma(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(fcma, probe_fcma, "hw.optional.arm.FEAT_FCMA");
+    return cached;
+}
+
+int hv_host_has_jscvt(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(jscvt, probe_jscvt, "hw.optional.arm.FEAT_JSCVT");
     return cached;
 }
 
 const char *hv_host_feature_summary(void) {
-    static char buf[160];
+    static char buf[320];
     if (buf[0] == '\0') {
-        snprintf(buf, sizeof buf, "LSE=%s LRCPC2=%s DotProd=%s FP16=%s%s",
+        snprintf(buf, sizeof buf,
+                 "LSE=%s LRCPC2=%s CRC32=%s RDM=%s FP16=%s FHM=%s DotProd=%s SHA3=%s SHA512=%s FCMA=%s JSCVT=%s%s",
                  hv_host_has_lse() ? "yes" : "no",
                  hv_host_has_lrcpc2() ? "yes" : "no",
-                 hv_host_has_dotprod() ? "yes" : "no",
+                 hv_host_has_crc32() ? "yes" : "no",
+                 hv_host_has_rdm() ? "yes" : "no",
                  hv_host_has_fp16() ? "yes" : "no",
+                 hv_host_has_fhm() ? "yes" : "no",
+                 hv_host_has_dotprod() ? "yes" : "no",
+                 hv_host_has_sha3() ? "yes" : "no",
+                 hv_host_has_sha512() ? "yes" : "no",
+                 hv_host_has_fcma() ? "yes" : "no",
+                 hv_host_has_jscvt() ? "yes" : "no",
                  used_probe ? " (probed)" : "");
     }
     return buf;

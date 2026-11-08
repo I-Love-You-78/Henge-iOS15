@@ -4,7 +4,7 @@ CFLAGS = -std=c11 -Wall -Wextra -O2 -g -Icore -Ihost -Idevices
 B = build
 
 CORE = $(B)/classify.o $(B)/operands.o $(B)/translate.o $(B)/dispatch.o $(B)/mmu.o $(B)/memop.o \
-       $(B)/exception.o $(B)/sysreg.o $(B)/machine.o $(B)/hostcaps.o
+       $(B)/exception.o $(B)/sysreg.o $(B)/machine.o $(B)/hostcaps.o $(B)/simd.o
 HOST = $(B)/jit_region.o $(B)/enter.o $(B)/disk.o
 DEV = $(B)/pvg_lite.o $(B)/pvg_metal.o $(B)/gicv3.o $(B)/timer.o $(B)/pl011.o $(B)/pl031.o $(B)/cfg.o $(B)/bdif.o $(B)/pcie.o \
       $(B)/virtio.o $(B)/virtio_blk.o $(B)/virtio_net.o $(B)/virtio_input.o $(B)/virtio_snd.o $(B)/virtio_usb.o $(B)/xhci.o $(B)/vmapple.o $(B)/aes.o $(B)/pl061.o
@@ -12,7 +12,7 @@ ENGINE = $(CORE) $(HOST)
 METAL_LIBS = -framework Foundation -framework QuartzCore -framework Metal -framework IOSurface -framework CoreGraphics -framework ImageIO -framework UniformTypeIdentifiers
 
 TESTS = $(B)/test_classify $(B)/test_jit_region $(B)/test_operands $(B)/test_jit $(B)/test_mem \
-        $(B)/test_mmu $(B)/test_exc $(B)/test_devices
+        $(B)/test_mmu $(B)/test_exc $(B)/test_devices $(B)/test_simd
 
 all: $(TESTS) $(B)/hengevm $(B)/hengevm-ref $(B)/hvsparse
 
@@ -83,6 +83,15 @@ $(B)/test_operands: tests/test_operands.c tests/operand_cases.s $(B)/operands.o
 	$(CC) $(CFLAGS) $^ -o $@
 $(B)/test_mmu: tests/test_mmu.c $(ENGINE)
 	$(CC) $(CFLAGS) tests/test_mmu.c $(ENGINE) -o $@
+
+# The Armv8.1+ emulation, differentially against the host CPU (Apple Silicon).
+$(B)/test_simd: tests/test_simd.c $(ENGINE) | $(B)
+	$(CC) $(CFLAGS) -Itests tests/test_simd.c $(ENGINE) -o $@
+
+# Only this one, on a host whose CPU can run every instruction being compared.
+test-simd: $(B)/test_simd
+	$(B)/test_simd
+.PHONY: test-simd
 
 $(B)/hvsparse: tools/hvsparse_main.c host/hvsparse.c host/hvsparse.h | $(B)
 	$(CC) $(CFLAGS) tools/hvsparse_main.c host/hvsparse.c -o $@

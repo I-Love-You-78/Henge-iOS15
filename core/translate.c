@@ -8,6 +8,7 @@
 #include "memop.h"
 #include "mmu.h"
 #include "operands.h"
+#include "simd.h"
 
 /* A block has two parts. The hot part is the code that runs every time: the translated
    instructions. The cold part is what hardly ever does: exits not chained yet, memory slow
@@ -1505,6 +1506,14 @@ static int translate_one(Emit *e, uint32_t insn, uint64_t pc) {
     }
     switch (kind) {
     case HV_INSN_COPY:
+        /* SIMD and FP are copied as they are, which is only right if the host
+           can run them: macOS code is built for apple-m1, so it can contain
+           DotProd, FP16, FP16FML, SHA3, RDM, FCADD/FCMLA, JSCVT or CRC32 that an
+           A9 cannot execute. Those go to core/simd.c instead. */
+        if (hv_simd_needs_help(insn)) {
+            put_helper(e, pc, insn, HV_OP_SIMD);
+            return 0;
+        }
         translate_copy(e, insn);
         return 0;
     case HV_INSN_PCREL:
