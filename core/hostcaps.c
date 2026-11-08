@@ -94,10 +94,11 @@ static int probe_rdm(void) {
     PROBE_END()
 }
 
-/* fadd h10, h10, h10: the scalar half form, 0x1ee01800 | ... (v8.2). */
+/* fadd v0.8h, v1.8h, v2.8h: 0x0e401400 | size<<22 | Rm<<16 | Rn<<5 | Rd, with the
+   Q bit (30) set for the 128-bit form. */
 static int probe_fp16(void) {
     PROBE_BEGIN()
-        __asm__ volatile(".inst 0x1ee0294a\n" ::: "h10");
+        __asm__ volatile(".inst 0x4e421420\n" ::: "v0", "v1", "v2");
     PROBE_END()
 }
 
@@ -139,11 +140,9 @@ static int probe_fcma(void) {
 /* fjcvtzs w10, d10: 0x1e7e0000 | Rn<<5 | Rd. */
 static int probe_jscvt(void) {
     PROBE_BEGIN()
-        __asm__ volatile(".inst 0x1e7e014a\n" ::: "w10");
+        __asm__ volatile(".inst 0x1e7e014a\n" ::: "w10", "v10");
     PROBE_END()
 }
-
-static int probe_none(void) { return CAP_UNKNOWN; }
 
 #else /* an Apple host that is not arm64: nothing to probe with */
 
@@ -158,8 +157,6 @@ static int probe_sha3(void) { return CAP_UNKNOWN; }
 static int probe_sha512(void) { return CAP_UNKNOWN; }
 static int probe_fcma(void) { return CAP_UNKNOWN; }
 static int probe_jscvt(void) { return CAP_UNKNOWN; }
-static int probe_none(void) { return CAP_UNKNOWN; }
-
 #endif
 
 #else /* not Darwin: the Mac build and the tests always run on a modern core. */
@@ -175,8 +172,6 @@ static int probe_sha3(void) { return CAP_UNKNOWN; }
 static int probe_sha512(void) { return CAP_UNKNOWN; }
 static int probe_fcma(void) { return CAP_UNKNOWN; }
 static int probe_jscvt(void) { return CAP_UNKNOWN; }
-static int probe_none(void) { return CAP_UNKNOWN; }
-
 #endif
 
 /* The first sysctl that answers decides; with none answering, the probe does;
