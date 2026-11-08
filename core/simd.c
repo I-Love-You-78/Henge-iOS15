@@ -390,8 +390,9 @@ static void do_fmlal(HvCpu *cpu, const HvSimdOp *op) {
         float y = half_to_float((uint16_t)lane_get(&b, upper ? i + 4 : i, 2));
         float acc = 0;
         memcpy(&acc, d.b + i * 4, 4);
-        double product = (double)x * (double)y;
-        acc = (float)((double)acc + (subtract ? -product : product));
+        /* FMLAL/FMLSL is a fused multiply-add: the product is exact and the sum is
+           rounded once, which is what fmaf computes (and what the hardware does). */
+        acc = fmaf(subtract ? -x : x, y, acc);
         memcpy(d.b + i * 4, &acc, 4);
     }
     if (!op->q) memset(d.b + 8, 0, 8);

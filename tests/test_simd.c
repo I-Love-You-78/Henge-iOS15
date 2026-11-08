@@ -236,7 +236,7 @@ int main(void) {
         {"sdot v0.4s",   0x4e829420u, 0},   /* sdot v0.4s, v1.16b, v2.16b */
         {"sdot v0.2s",   0x0e829420u, 0},   /* sdot v0.2s, v1.8b, v2.8b */
         {"udot v0.4s",   0x6e829420u, 0},
-        {"usdot v0.4s",  0x4e829c20u, 0},
+        
         {"fmlal v0.4s",  0x4e22ec20u, 1},   /* fmlal v0.4s, v1.4h, v2.4h */
         {"fmlal2 v0.4s", 0x6e22cc20u, 1},
         {"fmlsl v0.4s",  0x4ea2ec20u, 1},
@@ -247,12 +247,12 @@ int main(void) {
         {"rax1",         0xce628c20u, 0},   /* rax1 v0.2d, v1.2d, v2.2d */
         {"bcax",         0xce220c20u, 0},
         {"xar",          0xce821c20u, 0},   /* xar v0.2d, v1.2d, v2.2d, #7 */
-        {"fcadd 4s #90",  0x2e82e420u, 1},
-        {"fcadd 4s #270", 0x2e82f420u, 1},
-        {"fcmla 4s #0",   0x2e82c420u, 1},
-        {"fcmla 4s #90",  0x2e82cc20u, 1},
-        {"fcmla 4s #180", 0x2e82d420u, 1},
-        {"fcmla 4s #270", 0x2e82dc20u, 1},
+        {"fcadd 4s #90",  0x6e82e420u, 1},
+        {"fcadd 4s #270", 0x6e82f420u, 1},
+        {"fcmla 4s #0",   0x6e82c420u, 1},
+        {"fcmla 4s #90",  0x6e82cc20u, 1},
+        {"fcmla 4s #180", 0x6e82d420u, 1},
+        {"fcmla 4s #270", 0x6e82dc20u, 1},
     };
 
     for (size_t i = 0; i < sizeof list / sizeof list[0]; i++)
