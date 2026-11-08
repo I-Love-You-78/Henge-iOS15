@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Download macOS (or use a copy already on this device) and install it on a new Mac.
 struct InstallView: View {
@@ -15,6 +16,11 @@ struct InstallView: View {
     @State private var stageStarted = Date()
     @State private var stageSeen = -1
     @State private var confirmDeleteDownload: MacOSRelease?
+    /* Where the restore image comes from. Reusing one already on the device is
+       what makes reinstalling a build cheap: the image is 16 GB. */
+    @State private var source: Installer.ImageSource = Installer.haveLocalImage ? .files : .download
+    @State private var pickingImage = false
+    @State private var localImage = Installer.localImage()
     @AppStorage("henge.cpus") private var cpus = 4
 
     var body: some View {
@@ -67,10 +73,56 @@ struct InstallView: View {
             refresh += 1
         }
 
+        DeskHeading("Image")
+        VStack(spacing: 0) {
+            Picker("Image", selection: $source) {
+                ForEach(Installer.ImageSource.allCases) { s in
+                    Text(s.title).tag(s)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 17)
+            .padding(.top, 12)
+            Text(source.detail)
+                .font(.system(size: 13)).foregroundColor(Desk.dim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 17)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+            if source != .download {
+                Rectangle().fill(Desk.hairline).frame(height: 0.5)
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let image = localImage {
+                            Text(image.lastPathComponent)
+                                .font(.system(size: 15, weight: .medium)).foregroundColor(Desk.text).lineLimit(1)
+                            Text(ByteText.string(UInt64((try? image.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)))
+                                .font(.system(size: 13)).foregroundColor(Desk.good)
+                        } else {
+                            Text(source == .builtIn ? "No image inside this build" : "No image on this device")
+                                .font(.system(size: 15, weight: .medium)).foregroundColor(Desk.warn)
+                            Text(source == .builtIn ? "The stock ipa carries none: the image is 16 GB."
+                                                    : "Copy an .ipsw into Files › Henge › Restore images.")
+                                .font(.system(size: 13)).foregroundColor(Desk.dim)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Button("Choose…") { pickingImage = true }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Desk.accentLight)
+                }
+                .padding(.horizontal, 17)
+                .padding(.vertical, 10)
+            }
+        }
+        .deskCard()
+        .fileImporter(isPresented: $pickingImage, allowedContentTypes: [UTType(filenameExtension: "ipsw") ?? .data]) { result in
+            if case let .success(url) = result { importImage(url) }
+        }
+
         DeskHeading("New Mac")
         VStack(spacing: 0) {
-            TextField("Name", text: $name)
-                .font(.system(size: 16))
+            TextField("Name", text: $name)                .font(.system(size: 16))
                 .padding(.horizontal, 17)
                 .padding(.vertical, 14)
             Rectangle().fill(Desk.hairline).frame(height: 0.5)
@@ -100,13 +152,14 @@ struct InstallView: View {
         }
         .deskCard()
 
-        Button(Installer.haveImage(release) ? "Install" : "Download and Install") {
-            installer.start(release, name: name.isEmpty ? "Mac" : name, ramMB: ramMB, cpus: cpus, keepImage: !deleteAfter)
+        Button(source == .download && !Installer.haveImage(release) ? "Download and Install" : "Install") {
+            installer.start(release, name: name.isEmpty ? "Mac" : name, ramMB: ramMB, cpus: cpus, keepImage: !deleteAfter,
+                            source: source)
         }
         .buttonStyle(DeskButtonStyle(enabled: jitReady && !Device.chipTooOld))
         .disabled(!jitReady || Device.chipTooOld)
         .padding(.top, 20)
-        Text(Device.chipTooOld ? Device.chipTooOldText : jitReady ? "Keep Henge open and the \(Device.name) plugged in. Needs about \(ByteText.string(UInt64(Installer.spaceNeeded(release)))) free."
+        Text(Device.chipTooOld ? Device.chipTooOldText : jitReady ? "Keep Henge open and the \(Device.name) plugged in. Needs about \(ByteText.string(UInt64(installBytes))) free."
                                 : JITBootstrap.lastFailure ?? "Turn on JIT first. \(jit.automaticDescription)")
             .font(.system(size: 13))
             .foregroundColor(Desk.dim)
@@ -118,6 +171,30 @@ struct InstallView: View {
                 .buttonStyle(DeskButtonStyle())
                 .padding(.top, 12)
         }
+    }
+
+    /// Free space this install takes: the new Mac's disk, plus the download when
+    /// the image is not already here.
+    private var installBytes: Int64 {
+        let image = (source == .download && !Installer.haveImage(release)) ? release.bytes : 0
+        return image + (24 << 30)
+    }
+
+    /// Copies a picked .ipsw into Files › Henge › Restore images, so it is reused
+    /// by every later install and visible in Files.
+    private func importImage(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let fm = FileManager.default
+        try? fm.createDirectory(at: Installer.documentsImageDirectory, withIntermediateDirectories: true)
+        let dest = Installer.documentsImageDirectory.appendingPathComponent(url.lastPathComponent)
+        if url.standardizedFileURL != dest.standardizedFileURL {
+            try? fm.removeItem(at: dest)
+            try? fm.copyItem(at: url, to: dest)
+            HengeLog.log("install", "image brought in from Files: \(dest.lastPathComponent)")
+        }
+        localImage = Installer.localImage()
+        source = .files
     }
 
     private func versionRow(_ r: MacOSRelease) -> some View {

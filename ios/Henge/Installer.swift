@@ -62,6 +62,72 @@ final class Installer: NSObject, ObservableObject {
     nonisolated static var imageDirectory: URL { Machines.root.appendingPathComponent("Restore images", isDirectory: true) }
     nonisolated static func imagePath(_ r: MacOSRelease) -> URL { imageDirectory.appendingPathComponent("\(r.id).ipsw") }
 
+    /// Where a restore image can come from.
+    enum ImageSource: String, CaseIterable, Identifiable {
+        case download
+        case files
+        case builtIn
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .download: return "Download"
+            case .files: return "On this device"
+            case .builtIn: return "Inside Henge"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .download: return "Henge downloads the image from Apple when it installs."
+            case .files: return "An .ipsw in Files › Henge › Restore images, or one you pick. Download it once and every reinstall reuses it."
+            case .builtIn: return "An image packaged inside this copy of Henge. The stock build carries none: the image is 16 GB."
+            }
+        }
+    }
+
+    /// Files › Henge › Restore images: the app's Documents folder, visible with
+    /// UIFileSharingEnabled, so an image can be copied in from a computer once.
+    nonisolated static var documentsImageDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Restore images", isDirectory: true)
+    }
+
+    /// A restore image shipped inside the app bundle, if this build carries one.
+    nonisolated static var bundledImage: URL? {
+        if let u = Bundle.main.url(forResource: "macos", withExtension: "ipsw") { return u }
+        let root = Bundle.main.bundleURL
+        let items = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        return items.first { $0.pathExtension.lowercased() == "ipsw" && isWholeImage($0) }
+    }
+
+    private nonisolated static func isWholeImage(_ url: URL) -> Bool {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        return size > 1 << 30  /* a restore image is at least a gigabyte; a stub is not */
+    }
+
+    /// The image to install from when not downloading: the newest .ipsw in
+    /// Files › Henge › Restore images, then one Henge downloaded earlier, then
+    /// one inside the bundle.
+    nonisolated static func localImage() -> URL? {
+        var candidates: [URL] = []
+        for dir in [documentsImageDirectory, imageDirectory] {
+            let items = (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])) ?? []
+            candidates += items.filter { $0.pathExtension.lowercased() == "ipsw" && isWholeImage($0) }
+        }
+        let newestFirst = candidates.sorted {
+            let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            return a > b
+        }
+        return newestFirst.first ?? bundledImage
+    }
+
+    /// True when this build or this device already has an image to install from.
+    nonisolated static var haveLocalImage: Bool { localImage() != nil }
+
     /// The size of the image on this iPhone, if a whole one is there (the listed sizes are rounded).
     static func imageSize(_ r: MacOSRelease) -> Int64? {
         let values = try? imagePath(r).resourceValues(forKeys: [.fileSizeKey])
@@ -79,7 +145,8 @@ final class Installer: NSObject, ObservableObject {
 
     func reset() { if !busy { phase = .idle } }
 
-    func start(_ release: MacOSRelease, name: String, ramMB: Int, cpus: Int, keepImage: Bool) {
+    func start(_ release: MacOSRelease, name: String, ramMB: Int, cpus: Int, keepImage: Bool,
+               source: ImageSource = .download) {
         guard !busy else { return }
         machineName = name
         UIApplication.shared.isIdleTimerDisabled = true // the screen locking would suspend the download and the restore
@@ -87,10 +154,26 @@ final class Installer: NSObject, ObservableObject {
             defer { UIApplication.shared.isIdleTimerDisabled = false }
             var made: VirtualMac?
             do {
-                try checkSpace(release)
+                try checkSpace(release, source: source)
                 let rom = try await BootROM.file() // before the long download, so a problem shows up at once
                 HengeLog.log("install", "boot ROM ready")
-                let ipsw = try await download(release)
+                let ipsw: URL
+                switch source {
+                case .download:
+                    ipsw = try await download(release)
+                case .files:
+                    guard let local = Self.localImage() else {
+                        throw message("No restore image on this \(Device.name). Copy an .ipsw into Files › Henge › Restore images, or download one here first.")
+                    }
+                    HengeLog.log("install", "using the image on this device: \(local.lastPathComponent)")
+                    ipsw = local
+                case .builtIn:
+                    guard let built = Self.bundledImage else {
+                        throw message("This copy of Henge has no macOS image inside it. Use Download, or an image in Files.")
+                    }
+                    HengeLog.log("install", "using the image inside Henge: \(built.lastPathComponent)")
+                    ipsw = built
+                }
                 phase = .preparing
                 var mac = try prepare(name: name, ramMB: ramMB, rom: rom)
                 mac.osName = release.name
@@ -110,10 +193,12 @@ final class Installer: NSObject, ObservableObject {
         }
     }
 
-    private func checkSpace(_ r: MacOSRelease) throws {
+    private func checkSpace(_ r: MacOSRelease, source: ImageSource) throws {
         let free = (try? URL(fileURLWithPath: NSHomeDirectory()).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage ?? 0
-        let needed = Self.spaceNeeded(r)
+        /* Only a download adds the image's size: a local or bundled one is already here. */
+        let imageBytes = source == .download ? (Self.haveImage(r) ? 0 : r.bytes) : 0
+        let needed = imageBytes + Self.newMacBytes
         if free > 0 && free < needed {
             throw message("This install needs about \(ByteText.string(UInt64(needed))) free; this \(Device.name) has \(ByteText.string(UInt64(free))).")
         }
