@@ -87,6 +87,14 @@ HENGE_EXPORT bool henge_ios_jit_prewarm(size_t bytes);
 HENGE_EXPORT bool henge_ios_jit_prewarm_self(size_t bytes);
 
 /*
+ * The region prewarm/prewarm_self claimed, or NULL before one has been claimed.
+ * The engine is handed exactly this mapping (henge_vm_boot), so "a Mac can
+ * start" is "this is not NULL" -- not "a debugger is attached", which is true
+ * on some devices where no region was ever made.
+ */
+HENGE_EXPORT HengeDualMapping *henge_ios_jit_get_mapping(void);
+
+/*
  * The native runtime shares the prewarmed region with QEMU: it takes bytes from the bottom, QEMU the top. Call before
  * writing anything below `end` (an offset from the region's start); false means QEMU holds that part.
  */

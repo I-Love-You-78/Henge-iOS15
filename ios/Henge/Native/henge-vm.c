@@ -38,7 +38,7 @@ int henge_vm_boot(const char *rom, const char *disk, const char *aux, uint64_t e
     }
     HengeDualMapping *jit = henge_ios_jit_get_mapping();
     if (!jit || !jit->rw_addr) {
-        snprintf(err, errlen, "Henge has no JIT region. Turn on JIT first.");
+        snprintf(err, errlen, "Henge has no JIT region. Open the JIT screen and tap Turn On JIT, then start the Mac again.");
         return -1;
     }
     HvVmConfig c = {.rom = rom, .disk = disk, .aux = aux, .ecid = ecid, .seed = seed, .ram_mb = ram_mb, .ncpus = cpus, .log = 1,
@@ -75,7 +75,7 @@ int henge_vm_install(const char *rom, const char *disk, const char *aux, uint64_
     }
     HengeDualMapping *jit = henge_ios_jit_get_mapping();
     if (!jit || !jit->rw_addr) {
-        snprintf(err, errlen, "Henge has no JIT region. Turn on JIT first.");
+        snprintf(err, errlen, "Henge has no JIT region. Open the JIT screen and tap Turn On JIT, then start the Mac again.");
         return -1;
     }
     HvVmConfig c = {.rom = rom, .disk = disk, .aux = aux, .ecid = ecid, .ram_mb = ram_mb, .ncpus = cpus, .log = 1,

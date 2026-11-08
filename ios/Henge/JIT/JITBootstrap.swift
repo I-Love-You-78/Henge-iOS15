@@ -103,14 +103,15 @@ enum JITBootstrap {
         // buffer with MAP_JIT and the translation layer makes its region itself.
         if canGrantOwnJIT && !stikDebugMayServiceTraps {
             selfGrantTried = true
-            if mapJITWorks {
-                HengeLog.log("jit", "not trapping for a JIT region (no StikDebug); MAP_JIT executes here")
-                lastFailure = nil
-                return true
-            }
-            // MAP_JIT refused (no dynamic-codesigning after all, or Dopamine): plain memory made executable, which a debugged
-            // process or a jailbreak allows -- made here, with no brk for an attach that answers none (#148)
-            HengeLog.log("jit", "not trapping for a JIT region (no StikDebug); MAP_JIT does not execute here, trying plain memory")
+            // Make the region here, whatever route this device allows: MAP_JIT where the signature carries
+            // dynamic-codesigning, plain memory made executable where a debugger or a jailbreak allows it.
+            //
+            // It used to stop at "MAP_JIT executes here", on the QEMU fork's assumption that QEMU would map
+            // its own buffer a moment later. HengeVM does not: henge_vm_boot() is handed exactly the region
+            // claimed here and refuses to start without it, so on a device where MAP_JIT worked but nothing
+            // had been claimed the app said "JIT on" and then "Henge has no JIT region. Turn on JIT first."
+            // when a Mac was started.
+            HengeLog.log("jit", "not trapping for a JIT region (no StikDebug); making it here")
             prepareCompressedHeap()
             if henge_ios_jit_prewarm_self(jitBytes) {
                 prewarmed = true
@@ -119,6 +120,10 @@ enum JITBootstrap {
                 return true
             }
             releaseUnusedCompressedHeap()
+            lastFailure = mapJITWorks
+                ? "MAP_JIT executes here, but the \(jitBytes >> 20) MB region could not be claimed. Free some storage and try again."
+                : "This install cannot make executable memory: it has neither dynamic-codesigning nor a debugger. Install Henge with TrollStore, or from a jailbreak with \"Allow JIT in Apps\" on."
+            HengeLog.log("jit", "JIT prewarm FAILED (self route): \(lastFailure ?? "")")
             return false
         }
         HengeLog.log("jit", "claiming \(jitBytes / (1024 * 1024)) MiB of JIT memory now, "
@@ -131,13 +136,14 @@ enum JITBootstrap {
             lastFailure = nil
             detachIfDone()
         }
-        else if mapJITWorks {
-            // Not a failure worth reporting: this is the ordinary shape of an
-            // iOS that does not need a trap servicer. QEMU maps its own buffer
-            // with MAP_JIT a moment later and runs exactly as well.
+        else if mapJITWorks && henge_ios_jit_prewarm_self(jitBytes) {
+            // No trap servicer, but this install can make the region itself.
+            prewarmed = true
             lastFailure = nil
-            HengeLog.log("jit", "no trap servicer, but MAP_JIT executes here -- "
-                             + "QEMU will map its own buffer")
+            HengeLog.log("jit", "no trap servicer, but Henge made the region itself "
+                             + "(\(henge_ios_jit_self_route().map { String(cString: $0) } ?? "self"))")
+        } else if mapJITWorks {
+            lastFailure = "MAP_JIT executes here, but the \(jitBytes >> 20) MB region could not be claimed."
         } else {
             lastFailure = "The debugger is attached but is not answering trap "
                         + "requests, and this device will not execute a MAP_JIT "
@@ -179,11 +185,17 @@ enum JITBootstrap {
     /// Whether Henge has JIT now: a debugger marked it, or the region is already held. Before iOS 26 this tries, once, to make
     /// the region itself, which is all TrollStore and jailbroken devices need. Cheap after the first call, and logs nothing.
     static var ready: Bool {
-        if prewarmed || isLive { return true }
+        // What a Mac needs is the region the engine is handed (henge_vm_boot), not a flag about the device:
+        // being debugged without a region is exactly the state that showed "JIT on" and then refused to
+        // start a Mac with "Henge has no JIT region".
+        if prewarmed || isLive || henge_ios_jit_get_mapping() != nil {
+            prewarmed = true
+            return true
+        }
         // On a TXM device the debugger must also answer the brk that claims the region. CS_DEBUGGED alone is what opening
         // Henge from StikDebug's app list gives (no Henge script) or LiveContainer, and an install then stops at
         // "Henge has no JIT region" (#23).
-        if debuggedFlag { return !deviceEnforcesTXM }
+        if debuggedFlag { return !deviceEnforcesTXM && prewarm() }
         guard canGrantOwnJIT, !selfGrantTried else { return false }
         return prewarm()
     }
