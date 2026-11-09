@@ -13,6 +13,7 @@
 #include <time.h>
 
 #include "usb_host.h"
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -229,10 +230,57 @@ static void on_serial(char c) {
     }
 }
 
+/* HV_RAM_DUMP=<file>: once, a little before the restore gives up, copy the part
+   of guest RAM around the kernel's log buffer to that file. The guest's own
+   dmesg is the only thing that says *why* the root came up read-only, and it
+   never reaches the UART: it lives in RAM and this is how to read it. The
+   marker is the first line XNU prints; HV_RAM_DUMP_KB sets the size (1024 by
+   default) and HV_RAM_MARK the text to look for. */
+static void dump_ram_region(int attempt) {
+    const char *path = getenv("HV_RAM_DUMP");
+    if (!path || !*path || attempt != 10) return;
+    const char *marker = getenv("HV_RAM_MARK");
+    if (!marker || !*marker) marker = "Darwin Kernel";
+    uint8_t *ram = board.ram;
+    uint64_t size = board.ram_size;
+    if (!ram || !size) return;
+    size_t mlen = strlen(marker);
+    uint64_t last = 0;
+    int have = 0;
+    for (uint64_t at = 0; at + mlen <= size;) {
+        uint8_t *p = memchr(ram + at, (unsigned char)marker[0], (size_t)(size - at - mlen + 1));
+        if (!p) break;
+        if (memcmp(p, marker, mlen) == 0) last = (uint64_t)(p - ram), have = 1;
+        at = (uint64_t)(p - ram) + mlen;
+    }
+    if (!have) {
+        fprintf(stderr, "hengevm: HV_RAM_DUMP: '%s' is not in guest RAM\n", marker);
+        return;
+    }
+    uint64_t len = 1024 * 1024;
+    const char *kb = getenv("HV_RAM_DUMP_KB");
+    if (kb && atoi(kb) > 0) len = (uint64_t)atoi(kb) * 1024;
+    uint64_t from = last > (64 << 10) ? last - (64 << 10) : 0;
+    if (from + len > size) len = size - from;
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        fprintf(stderr, "hengevm: HV_RAM_DUMP: cannot write %s: %s\n", path, strerror(errno));
+        return;
+    }
+    size_t n = fwrite(ram + from, 1, (size_t)len, f);
+    fclose(f);
+    fprintf(stderr, "hengevm: HV_RAM_DUMP: %zu bytes from ram+%llx ('%s' at %llx) -> %s\n", n,
+            (unsigned long long)from, marker, (unsigned long long)last, path);
+}
+
+static int scan_active(void) {
+    return (patch_pairs_n && !patch_done) || getenv("HV_RAM_DUMP") != NULL;
+}
+
 static void board_poll(void) {
     if (extra_poll) extra_poll();
     if (net_on) hv_net_poll();
-    if (patch_pairs_n && !patch_done && patch_attempts < 20) {
+    if (scan_active() && patch_attempts < 20) {
         double now = now_seconds();
         /* The whole restore fails about 55 s into the run (37 s of daemon
            uptime), and the ramdisk is in RAM from the second second on, so the
@@ -240,7 +288,8 @@ static void board_poll(void) {
         if (patch_start == 0) patch_start = now, patch_next = now + 8.0;
         if (now >= patch_next) {
             patch_attempts++;
-            patch_guest_strings(patch_attempts);
+            if (patch_pairs_n) patch_guest_strings(patch_attempts);
+            dump_ram_region(patch_attempts);
             patch_next = now + 5.0;
         }
     }
