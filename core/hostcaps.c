@@ -5,6 +5,7 @@
 #include <string.h>
 
 #if defined(__APPLE__)
+#include <TargetConditionals.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <sys/sysctl.h>
@@ -13,6 +14,24 @@
 #endif
 
 #define CAP_UNKNOWN (-1)
+
+/* Whether a feature may be *measured* by executing an instruction under a SIGILL
+   guard.
+
+   Not on iOS. A jailbroken iPhone runs a Mach exception handler (Dopamine,
+   ElleKit: the crash report says "byProc: exc handler"), and a Mach handler sees
+   the exception before any POSIX signal handler does — so the probe's SIGILL is
+   delivered there and the app is killed before siglongjmp can run. That is
+   exactly how the 8 Plus died right after the JIT prewarm: hv_vm_create resolved
+   the features, the first instruction A11 lacks (LDAPUR) trapped, and the
+   jailbreak's handler terminated Henge. On iOS, only the sysctls are consulted,
+   and a missing answer means "not available" — emulating an instruction the host
+   could run is slow but correct, the reverse is a crash. */
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#define HV_HOST_MAY_PROBE 0
+#else
+#define HV_HOST_MAY_PROBE 1
+#endif
 
 static int used_probe;
 
@@ -62,7 +81,7 @@ static void probe_handler(int sig) {
 #if defined(__arm64__)
 
 /* ldadd w10, w10, [x9]: 0xb8200000 | Rs<<16 | Rn<<5 | Rt. */
-static int probe_lse(void) {
+static int probe_lse(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile("mov x9, %0\n"
                          "mov w10, #1\n"
@@ -72,7 +91,7 @@ static int probe_lse(void) {
 }
 
 /* ldapur w10, [x9]: 0x19400000 | Rn<<5 | Rt. */
-static int probe_lrcpc2(void) {
+static int probe_lrcpc2(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile("mov x9, %0\n"
                          ".inst 0x1940012a\n"
@@ -81,14 +100,14 @@ static int probe_lrcpc2(void) {
 }
 
 /* crc32b w10, w10, w10: 0x1ac04000 | Rm<<16 | Rn<<5 | Rd. */
-static int probe_crc32(void) {
+static int probe_crc32(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0x1aca414a\n" ::: "w10", "cc");
     PROBE_END()
 }
 
 /* sqrdmlah v0.4h, v1.4h, v2.4h: 0x2e008400 | size<<22 | Rm<<16 | Rn<<5 | Rd. */
-static int probe_rdm(void) {
+static int probe_rdm(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0x2e428420\n" ::: "v0", "v1", "v2");
     PROBE_END()
@@ -96,49 +115,49 @@ static int probe_rdm(void) {
 
 /* fadd v0.8h, v1.8h, v2.8h: 0x0e401400 | size<<22 | Rm<<16 | Rn<<5 | Rd, with the
    Q bit (30) set for the 128-bit form. */
-static int probe_fp16(void) {
+static int probe_fp16(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0x4e421420\n" ::: "v0", "v1", "v2");
     PROBE_END()
 }
 
 /* fmlal v0.4s, v1.4h, v2.4h: 0x0e20ec00 | Rm<<16 | Rn<<5 | Rd. */
-static int probe_fhm(void) {
+static int probe_fhm(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0x0e22ec20\n" ::: "v0", "v1", "v2");
     PROBE_END()
 }
 
 /* sdot v0.4s, v1.16b, v2.16b: 0x0e809400 | Rm<<16 | Rn<<5 | Rd. */
-static int probe_dotprod(void) {
+static int probe_dotprod(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0x0e829420\n" ::: "v0", "v1", "v2");
     PROBE_END()
 }
 
 /* eor3 v0.16b, v1.16b, v2.16b, v3.16b: 0xce000000 | Rm<<16 | Ra<<10 | Rn<<5 | Rd. */
-static int probe_sha3(void) {
+static int probe_sha3(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0xce020c20\n" ::: "v0", "v1", "v2", "v3");
     PROBE_END()
 }
 
 /* sha512h q0, q1, v2.2d: 0xce608000 | Rm<<16 | Rn<<5 | Rd. */
-static int probe_sha512(void) {
+static int probe_sha512(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0xce628020\n" ::: "v0", "v1", "v2");
     PROBE_END()
 }
 
 /* fcadd v0.4s, v1.4s, v2.4s, #90: 0x2e00e400 | size<<22 | Rm<<16 | Rn<<5 | Rd. */
-static int probe_fcma(void) {
+static int probe_fcma(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0x2e82e420\n" ::: "v0", "v1", "v2");
     PROBE_END()
 }
 
 /* fjcvtzs w10, d10: 0x1e7e0000 | Rn<<5 | Rd. */
-static int probe_jscvt(void) {
+static int probe_jscvt(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
         __asm__ volatile(".inst 0x1e7e014a\n" ::: "w10", "v10");
     PROBE_END()
@@ -195,7 +214,7 @@ static int resolve(const char *const *names, int nnames, int (*probe)(void), int
 #define CAP(name, probe, ...)                                                     \
     do {                                                                          \
         static const char *const names[] = {__VA_ARGS__};                         \
-        cached = resolve(names, (int)(sizeof names / sizeof names[0]), probe, 1);  \
+        cached = resolve(names, (int)(sizeof names / sizeof names[0]), probe, HV_HOST_MAY_PROBE); \
     } while (0)
 
 int hv_host_has_lse(void) {
