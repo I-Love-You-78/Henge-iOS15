@@ -144,7 +144,7 @@ final class Installer: NSObject, ObservableObject {
         let rc = version.withUnsafeMutableBufferPointer { v in
             products.withUnsafeMutableBufferPointer { p in
                 ipsw.path.withCString { path in
-                    henge_install_check_ipsw(path, v.baseAddress, v.count, p.baseAddress, p.count, &virtual)
+                    hv_install_check_ipsw(path, v.baseAddress, v.count, p.baseAddress, p.count, &virtual)
                 }
             }
         }
