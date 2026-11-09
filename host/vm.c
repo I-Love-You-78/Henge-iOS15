@@ -110,9 +110,10 @@ const char *hv_vm_reason_name(int r) {
 }
 
 /* Host-side device work on CPU 0's thread each tick. */
-/* HV_PATCH_STR="old=new[;old=new]": strings to rewrite in guest RAM, once the
-   restore daemon says it is up. Equal lengths only, and only the bytes that
-   differ move, so a vCPU never sees half a path.
+/* HV_PATCH_STR="old=new[;old=new]": strings to rewrite in guest RAM, a little
+   after the restore environment has booted. Equal lengths only, and only the
+   bytes that differ move, so a vCPU never sees half a path. `old=new` with both
+   halves the same is a probe: it only reports whether the string is there.
 
    Why this exists: in the restore environment here the root is the ramdisk and it
    is mounted read-only, so `restored` cannot create the mount point it wants for
@@ -130,6 +131,19 @@ static size_t watch_len;
 
 /* The restore daemon prints these before it reaches the firmware step. */
 static const char *const watch_markers[] = {"client_protocol_version", "perform_restore_installing"};
+
+static double now_seconds(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec + ts.tv_nsec * 1e-9;
+}
+
+/* A pass over guest RAM runs a little after the restore environment is up: its
+   output goes through the restore protocol, not the UART, so the clock is the
+   only trigger we have. Every attempt is cheap enough (one memchr sweep) and
+   the strings stay put, so a few retries cover a slow boot. */
+static double patch_start;
+static double patch_next;
 
 static void patch_read_spec(void) {
     const char *spec = getenv("HV_PATCH_STR");
@@ -154,34 +168,50 @@ static void patch_read_spec(void) {
         fprintf(stderr, "hengevm: HV_PATCH_STR armed: %s -> %s\n", patch_pairs[0][0], patch_pairs[0][1]);
 }
 
-/* One pass over guest RAM. Returns how many occurrences were rewritten. */
-static int patch_guest_strings(void) {
+/* One pass over guest RAM: counts, and rewrites where the halves differ, so
+   `from=from` works as a probe that only reports whether a string is there. */
+static void patch_guest_strings(int attempt) {
     uint8_t *ram = board.ram;
     uint64_t size = board.ram_size;
-    if (!ram || !size) return 0;
-    int hits = 0;
+    if (!ram || !size) return;
+    int counts[4] = {0, 0, 0, 0};
     for (int i = 0; i < patch_pairs_n; i++) {
         const char *from = patch_pairs[i][0], *to = patch_pairs[i][1];
         size_t len = strlen(from);
+        int changing = memcmp(from, to, len) != 0;
         uint64_t at = 0;
         while (at + len <= size) {
             uint8_t *p = memchr(ram + at, (unsigned char)from[0], (size_t)(size - at - len + 1));
             if (!p) break;
             if (memcmp(p, from, len) == 0) {
-                for (size_t k = len; k-- > 0;)
-                    if (p[k] != (unsigned char)to[k]) p[k] = (unsigned char)to[k]; /* one byte at a time */
-                hits++;
+                counts[i]++;
+                if (changing) {
+                    for (size_t k = len; k-- > 0;)
+                        if (p[k] != (unsigned char)to[k]) p[k] = (unsigned char)to[k]; /* one byte at a time */
+                }
             }
             at = (uint64_t)(p - ram) + len;
         }
     }
-    return hits;
+    /* Say what each pair found; an attempt that found nothing is worth one line
+       for the first few tries, or we cannot tell a wrong literal from a lost one. */
+    if (board.m && board.m->log) {
+        fprintf(stderr, "hengevm: HV_PATCH_STR attempt %d:", attempt);
+        for (int i = 0; i < patch_pairs_n; i++) fprintf(stderr, " %s=%d", patch_pairs[i][0], counts[i]);
+        fprintf(stderr, "\n");
+    }
+    for (int i = 0; i < patch_pairs_n; i++) {
+        if (!counts[i] || memcmp(patch_pairs[i][0], patch_pairs[i][1], strlen(patch_pairs[i][0])) == 0) continue;
+        patch_done = 1;
+        if (board.m && board.m->log)
+            fprintf(stderr, "hengevm: patched %d guest string(s) %s -> %s\n", counts[i], patch_pairs[i][0], patch_pairs[i][1]);
+    }
 }
 
-/* Called for every byte the guest writes to its UART (from the vCPU that wrote
-   it, so guest RAM is quiet enough to touch). */
+/* Called for every byte the guest writes to its UART: if the restore daemon's
+   output ever does reach it, patch at once instead of waiting for the clock. */
 static void on_serial(char c) {
-    if (!patch_pairs_n || patch_done || patch_attempts >= 8) return;
+    if (!patch_pairs_n || patch_done) return;
     if (watch_len + 1 < sizeof watch_buf) {
         watch_buf[watch_len++] = c;
     } else {
@@ -190,21 +220,27 @@ static void on_serial(char c) {
         watch_len = sizeof watch_buf - 1;
     }
     watch_buf[watch_len] = 0;
-    int armed = 0;
-    for (size_t i = 0; i < sizeof watch_markers / sizeof watch_markers[0]; i++)
-        if (strstr(watch_buf, watch_markers[i])) armed = 1;
-    if (!armed) return;
-    patch_attempts++;
-    int hits = patch_guest_strings();
-    if (hits) {
-        patch_done = 1;
-        fprintf(stderr, "hengevm: patched %d guest string(s) %s -> %s\n", hits, patch_pairs[0][0], patch_pairs[0][1]);
+    for (size_t i = 0; i < sizeof watch_markers / sizeof watch_markers[0]; i++) {
+        if (!strstr(watch_buf, watch_markers[i])) continue;
+        patch_attempts++;
+        patch_guest_strings(patch_attempts);
+        patch_next = now_seconds() + 5.0;
+        return;
     }
 }
 
 static void board_poll(void) {
     if (extra_poll) extra_poll();
     if (net_on) hv_net_poll();
+    if (patch_pairs_n && !patch_done && patch_attempts < 16) {
+        double now = now_seconds();
+        if (patch_start == 0) patch_start = now, patch_next = now + 55.0;
+        if (now >= patch_next) {
+            patch_attempts++;
+            patch_guest_strings(patch_attempts);
+            patch_next = now + 8.0;
+        }
+    }
 }
 static int fail(char *err, size_t n, const char *msg) {
     if (err && n) snprintf(err, n, "%s", msg);
