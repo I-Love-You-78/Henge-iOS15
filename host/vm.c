@@ -224,15 +224,82 @@ static void on_serial(char c) {
     }
 }
 
-/* HV_RAM_DUMP=<file>: once, a little before the restore gives up, copy the part
-   of guest RAM around the kernel's log buffer to that file. The guest's own
-   dmesg is the only thing that says *why* the root came up read-only, and it
-   never reaches the UART: it lives in RAM and this is how to read it. The
-   marker is the first line XNU prints; HV_RAM_DUMP_KB sets the size (1024 by
-   default) and HV_RAM_MARK the text to look for. */
+/* HV_RAM_GREP="pat1;pat2...": with HV_RAM_DUMP=<file>, write a window around
+   every occurrence of each pattern found in guest RAM, so the log file holds the
+   text that matters (kernel mount messages, restored's own strings) without a
+   1.5 GB dump. */
+static char grep_pats[4][48];
+static int grep_pats_n;
+
+static void grep_read_spec(void) {
+    const char *spec = getenv("HV_RAM_GREP");
+    if (!spec || !*spec) return;
+    char buf[4 * 48];
+    snprintf(buf, sizeof buf, "%s", spec);
+    char *save = NULL;
+    for (char *item = strtok_r(buf, ";", &save); item && grep_pats_n < 4; item = strtok_r(NULL, ";", &save)) {
+        if (!*item) continue;
+        snprintf(grep_pats[grep_pats_n], sizeof grep_pats[0], "%s", item);
+        grep_pats_n++;
+    }
+    if (grep_pats_n) fprintf(stderr, "hengevm: HV_RAM_GREP armed: %d pattern(s)\n", grep_pats_n);
+}
+
+/* A window that starts at the beginning of the line the hit is on: the kernel's
+   log lines run to a newline, so a hit is usually mid-line. */
+static size_t window_start(const uint8_t *ram, uint64_t off, uint64_t size, uint64_t back) {
+    uint64_t from = off > back ? off - back : 0;
+    for (uint64_t at = off; at > from; at--)
+        if (ram[at - 1] == '\n') return at;
+    (void)size;
+    return from;
+}
+
+static void dump_ram_grep(FILE *f, const char *path) {
+    uint8_t *ram = board.ram;
+    uint64_t size = board.ram_size;
+    if (!ram || !size) return;
+    int written = 0;
+    for (int i = 0; i < grep_pats_n; i++) {
+        const char *pat = grep_pats[i];
+        size_t len = strlen(pat);
+        int hits = 0;
+        uint64_t at = 0;
+        while (at + len <= size && hits < 24) {
+            uint8_t *p = memchr(ram + at, (unsigned char)pat[0], (size_t)(size - at - len + 1));
+            if (!p) break;
+            uint64_t off = (uint64_t)(p - ram);
+            if (memcmp(p, pat, len) == 0) {
+                uint64_t from = window_start(ram, off, size, 256);
+                uint64_t to = from + 2048;
+                if (to > size) to = size;
+                fprintf(f, "\n=== %s @ram+0x%llx ===\n", pat, (unsigned long long)off);
+                for (uint64_t k = from; k < to; k++) {
+                    uint8_t c = ram[k];
+                    if (c == '\n' || c == '\t' || (c >= 0x20 && c < 0x7f)) fputc(c, f);
+                    else fputc('.', f);
+                }
+                hits++;
+                written += (int)(to - from);
+            }
+            at = off + len;
+        }
+    }
+    fprintf(stderr, "hengevm: HV_RAM_GREP: %d bytes of context -> %s\n", written, path);
+}
 static void dump_ram_region(int attempt) {
     const char *path = getenv("HV_RAM_DUMP");
     if (!path || !*path || attempt != 10) return;
+    if (grep_pats_n) {
+        FILE *f = fopen(path, "wb");
+        if (!f) {
+            fprintf(stderr, "hengevm: HV_RAM_DUMP: cannot write %s: %s\n", path, strerror(errno));
+            return;
+        }
+        dump_ram_grep(f, path);
+        fclose(f);
+        return;
+    }
     const char *marker = getenv("HV_RAM_MARK");
     if (!marker || !*marker) marker = "Darwin Kernel";
     uint8_t *ram = board.ram;
@@ -458,7 +525,8 @@ int hv_vm_create(const HvVmConfig *c, char *err, size_t errlen) {
     /* Optional: rewrite strings in guest RAM once the restore daemon is up (see
        HV_PATCH_STR above), which is how the read-only root stops being fatal. */
     patch_read_spec();
-    if (patch_pairs_n) hv_pl011_watch = on_serial;
+    grep_read_spec();
+    if (patch_pairs_n || grep_pats_n || getenv("HV_RAM_DUMP")) hv_pl011_watch = on_serial;
     if (board.vusb && getenv("HV_VUSB_PROBE")) hv_usb_probe_start(board.vusb);
     // The setter and publication share this lock: an older preboot target can
     // never overwrite a monitor change made while the board was being built.
