@@ -127,24 +127,18 @@ static char patch_pairs[4][2][64];
 static int patch_pairs_n;
 static int patch_attempts;
 static int patch_done;
+static int iboot_done;   /* iBoot has handed the machine to the kernel */
 static char watch_buf[64];
 static size_t watch_len;
 
 /* The restore daemon prints these before it reaches the firmware step. */
-static const char *const watch_markers[] = {"client_protocol_version", "perform_restore_installing"};
+static double patch_next;
 
 static double now_seconds(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
-
-/* A pass over guest RAM runs a little after the restore environment is up: its
-   output goes through the restore protocol, not the UART, so the clock is the
-   only trigger we have. Every attempt is cheap enough (one memchr sweep) and
-   the strings stay put, so a few retries cover a slow boot. */
-static double patch_start;
-static double patch_next;
 
 static void patch_read_spec(void) {
     const char *spec = getenv("HV_PATCH_STR");
@@ -209,10 +203,11 @@ static void patch_guest_strings(int attempt) {
     }
 }
 
-/* Called for every byte the guest writes to its UART: if the restore daemon's
-   output ever does reach it, patch at once instead of waiting for the clock. */
+/* Called for every byte the guest writes to its UART: it is how we know iBoot
+   has handed over to the kernel. Patching before that rewrites strings inside
+   iBoot (4 of them are its own "mnt5" at 8 s) and iBoot panics at :987. */
 static void on_serial(char c) {
-    if (!patch_pairs_n || patch_done) return;
+    if (!patch_pairs_n && !getenv("HV_RAM_DUMP")) return;
     if (watch_len + 1 < sizeof watch_buf) {
         watch_buf[watch_len++] = c;
     } else {
@@ -221,12 +216,11 @@ static void on_serial(char c) {
         watch_len = sizeof watch_buf - 1;
     }
     watch_buf[watch_len] = 0;
-    for (size_t i = 0; i < sizeof watch_markers / sizeof watch_markers[0]; i++) {
-        if (!strstr(watch_buf, watch_markers[i])) continue;
-        patch_attempts++;
-        patch_guest_strings(patch_attempts);
-        patch_next = now_seconds() + 5.0;
-        return;
+    static const char *const handoff = "End of iBootStage2 serial output";
+    if (!iboot_done && strstr(watch_buf, handoff)) {
+        iboot_done = 1;
+        patch_next = now_seconds() + 3.0;
+        if (board.m && board.m->log) fprintf(stderr, "hengevm: iBoot handed over; guest RAM is ours from here\n");
     }
 }
 
@@ -274,7 +268,7 @@ static void dump_ram_region(int attempt) {
 }
 
 static int scan_active(void) {
-    return (patch_pairs_n && !patch_done) || getenv("HV_RAM_DUMP") != NULL;
+    return iboot_done && ((patch_pairs_n && !patch_done) || getenv("HV_RAM_DUMP") != NULL);
 }
 
 static void board_poll(void) {
@@ -282,10 +276,10 @@ static void board_poll(void) {
     if (net_on) hv_net_poll();
     if (scan_active() && patch_attempts < 20) {
         double now = now_seconds();
-        /* The whole restore fails about 55 s into the run (37 s of daemon
-           uptime), and the ramdisk is in RAM from the second second on, so the
-           first pass is early and the rest just keep re-checking. */
-        if (patch_start == 0) patch_start = now, patch_next = now + 8.0;
+        /* The scans start 3 s after iBoot hands over (see on_serial) and repeat
+           every 5 s: restored's own strings only show up as its pages arrive,
+           and the step that fails runs about 25 s after the handover. */
+        if (patch_next == 0) patch_next = now + 3.0;
         if (now >= patch_next) {
             patch_attempts++;
             if (patch_pairs_n) patch_guest_strings(patch_attempts);
