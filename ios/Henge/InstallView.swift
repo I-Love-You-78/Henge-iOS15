@@ -119,6 +119,13 @@ struct InstallView: View {
         .fileImporter(isPresented: $pickingImage, allowedContentTypes: [UTType(filenameExtension: "ipsw") ?? .data]) { result in
             if case let .success(url) = result { importImage(url) }
         }
+        .onChange(of: source) { chosen in
+            /* Follow the image: its file name carries the build id, so the version
+               row cannot claim a release the file is not. */
+            guard chosen != .download else { return }
+            localImage = Installer.localImage()
+            if let image = localImage, let match = Installer.release(forImage: image.lastPathComponent) { release = match }
+        }
 
         DeskHeading("New Mac")
         VStack(spacing: 0) {
@@ -195,6 +202,7 @@ struct InstallView: View {
         }
         localImage = Installer.localImage()
         source = .files
+        if let image = localImage, let match = Installer.release(forImage: image.lastPathComponent) { release = match }
     }
 
     private func versionRow(_ r: MacOSRelease) -> some View {

@@ -128,6 +128,15 @@ final class Installer: NSObject, ObservableObject {
     /// True when this build or this device already has an image to install from.
     nonisolated static var haveLocalImage: Bool { localImage() != nil }
 
+    /// Which listed release an image file belongs to, from the build id in its
+    /// name: `UniversalMac_15.6.1_24G90_Restore.ipsw` is the 24G90 entry. nil
+    /// when the name carries no id we know, which is worth showing: picking a
+    /// macOS 27 image while the row says 15.6.1 makes the restore refuse with
+    /// "Could not make sure this firmware is suitable for the current device".
+    nonisolated static func release(forImage name: String) -> MacOSRelease? {
+        MacOSRelease.all.first { name.contains($0.id) }
+    }
+
     /// The size of the image on this iPhone, if a whole one is there (the listed sizes are rounded).
     static func imageSize(_ r: MacOSRelease) -> Int64? {
         let values = try? imagePath(r).resourceValues(forKeys: [.fileSizeKey])
@@ -176,7 +185,9 @@ final class Installer: NSObject, ObservableObject {
                 }
                 phase = .preparing
                 var mac = try prepare(name: name, ramMB: ramMB, rom: rom)
-                mac.osName = release.name
+                /* The image decides the version, not the row that was highlighted:
+                   a local or bundled image can be any release. */
+                mac.osName = Self.release(forImage: ipsw.lastPathComponent)?.name ?? release.name
                 made = mac
                 phase = .installing
                 try await install(mac, ipsw: ipsw, cpus: cpus)
