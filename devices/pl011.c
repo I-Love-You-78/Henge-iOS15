@@ -18,8 +18,11 @@ static void update(HvPl011 *u) {
     hv_gicv3_set_irq(u->gic, u->intid, (u->ris & u->imsc) != 0);
 }
 
+void (*hv_pl011_watch)(char c);
+
 static void default_output(void *opaque, uint8_t c) {
     (void)opaque;
+    if (hv_pl011_watch) hv_pl011_watch((char)c);
     fputc(c, stdout);
     if (c == '\n') fflush(stdout);
 }

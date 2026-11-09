@@ -259,6 +259,35 @@ ios/scripts/package_ios15_ipa.sh   出 ipa
 
 许可证不变：GPL-2.0-or-later。
 
+## 2026-02：restore 到 7% 后 `failed to update device firmware pre FDR`
+
+`SB` 修掉之后，restore 一路走到 ASR 真正写盘（`/mnt6/FactoryData` 建目录、AEA 解密
+`AppleEncryptedArchive`、`RecoveryOSASRImage` 流式接收），然后死在：
+
+```
+entering update_device_firmware_pre_fdr
+unable to create mount directory: 30          ← errno 30 = EROFS
+Unable to mount iSC Preboot at /mnt5/preboot-mount-XMSC5G
+CHECKPOINT FAILURE: update_device_firmware_pre_fdr
+```
+
+同一份日志里还有两处同源证据：`Cannot set checkpoint engine recorder path to /mnt5, no write
+access`。也就是**这里的根（`/dev/md0`，恢复内存盘）是只读挂载的**，`/mnt5` 只是它上面的普通目录，
+所以 `mkdtemp("/mnt5/preboot-mount-XXXXXX")` 必然 EROFS。（对照：`/mnt1`、`/mnt6`、`/mnt7`、
+`/mnt9` 都是挂上来的可写卷，所以 `restored` 往 `/mnt6` 建目录是成功的。）上游 issue #37 在 M1 iPad
+上把同一个 15.6.1（`24G90`）完整装到 Setup Assistant，说明这一步在真机环境能过，差异在我们这边。
+
+新增 `HV_PATCH_STR`（`host/vm.c`）：在 guest 启动后、由 guest 自己的串口输出（`client_protocol_version`）
+触发，对 guest RAM 里等长的字符串做**单字节原地改写**（一个 vCPU 永远看不到写了一半的路径）。
+用途是把那个只读的挂载基座指到已经以读写挂上的卷上：
+
+```
+HV_PATCH_STR=/mnt5=/mnt6      # 挂载点落在 Hardware 卷里，挂上去的仍旧是 iSC Preboot 卷
+```
+
+日志会出现 `hengevm: patched N guest string(s) /mnt5 -> /mnt6`；`N` 为 0 说明这个字面量不在 RAM 里
+（那我们就要换个改法，而不是加大量）。
+
 ## 2026-02：restore 到 70% 后 SIGILL —— HINT/屏障空间
 
 现场：`hengevm: signal 4 in translated code: pc 102905e00 … guest pc 1030bec08 el0`，

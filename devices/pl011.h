@@ -19,5 +19,8 @@ typedef struct HvPl011 {
 HvPl011 *hv_pl011_create(HvMachine *m, HvGic *gic, uint64_t pa, int intid);
 /* Host side input; returns 0 if the RX FIFO was full. */
 int hv_pl011_receive(HvPl011 *u, uint8_t c);
+/* Every byte the guest sends, before it reaches stdout: the host watches it to
+   know how far a restore has got (see HV_PATCH_STR in host/vm.c). */
+extern void (*hv_pl011_watch)(char c);
 
 #endif

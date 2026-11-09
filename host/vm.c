@@ -22,6 +22,7 @@
 #include "dispatch.h"
 #include "hostcaps.h"
 #include "net_slirp.h"
+#include "pl011.h"
 #include "simd.h"
 
 static HvMachine m;
@@ -109,11 +110,102 @@ const char *hv_vm_reason_name(int r) {
 }
 
 /* Host-side device work on CPU 0's thread each tick. */
+/* HV_PATCH_STR="old=new[;old=new]": strings to rewrite in guest RAM, once the
+   restore daemon says it is up. Equal lengths only, and only the bytes that
+   differ move, so a vCPU never sees half a path.
+
+   Why this exists: in the restore environment here the root is the ramdisk and it
+   is mounted read-only, so `restored` cannot create the mount point it wants for
+   the iSC Preboot volume ("unable to create mount directory: 30", errno 30 =
+   EROFS) and drops out with "failed to update device firmware pre FDR" at 7%.
+   Pointing that base at a volume that is already mounted read-write (the
+   Hardware volume, /mnt6) lets the step run; the volume mounted there is still
+   the iSC Preboot one, so what gets written is unchanged. */
+static char patch_pairs[4][2][64];
+static int patch_pairs_n;
+static int patch_attempts;
+static int patch_done;
+static char watch_buf[64];
+static size_t watch_len;
+
+/* The restore daemon prints these before it reaches the firmware step. */
+static const char *const watch_markers[] = {"client_protocol_version", "perform_restore_installing"};
+
+static void patch_read_spec(void) {
+    const char *spec = getenv("HV_PATCH_STR");
+    if (!spec || !*spec) return;
+    char buf[4 * 2 * 64];
+    snprintf(buf, sizeof buf, "%s", spec);
+    char *save = NULL;
+    for (char *item = strtok_r(buf, ";", &save); item && patch_pairs_n < 4; item = strtok_r(NULL, ";", &save)) {
+        char *eq = strchr(item, '=');
+        if (!eq) continue;
+        size_t ol = (size_t)(eq - item), nl = strlen(eq + 1);
+        if (ol == 0 || ol != nl || ol >= sizeof patch_pairs[0][0]) {
+            fprintf(stderr, "hengevm: HV_PATCH_STR: '%s' needs equal-length halves under 64 bytes\n", item);
+            continue;
+        }
+        memcpy(patch_pairs[patch_pairs_n][0], item, ol);
+        patch_pairs[patch_pairs_n][0][ol] = 0;
+        memcpy(patch_pairs[patch_pairs_n][1], eq + 1, nl + 1);
+        patch_pairs_n++;
+    }
+    if (patch_pairs_n)
+        fprintf(stderr, "hengevm: HV_PATCH_STR armed: %s -> %s\n", patch_pairs[0][0], patch_pairs[0][1]);
+}
+
+/* One pass over guest RAM. Returns how many occurrences were rewritten. */
+static int patch_guest_strings(void) {
+    uint8_t *ram = board.ram;
+    uint64_t size = board.ram_size;
+    if (!ram || !size) return 0;
+    int hits = 0;
+    for (int i = 0; i < patch_pairs_n; i++) {
+        const char *from = patch_pairs[i][0], *to = patch_pairs[i][1];
+        size_t len = strlen(from);
+        uint64_t at = 0;
+        while (at + len <= size) {
+            uint8_t *p = memchr(ram + at, (unsigned char)from[0], (size_t)(size - at - len + 1));
+            if (!p) break;
+            if (memcmp(p, from, len) == 0) {
+                for (size_t k = len; k-- > 0;)
+                    if (p[k] != (unsigned char)to[k]) p[k] = (unsigned char)to[k]; /* one byte at a time */
+                hits++;
+            }
+            at = (uint64_t)(p - ram) + len;
+        }
+    }
+    return hits;
+}
+
+/* Called for every byte the guest writes to its UART (from the vCPU that wrote
+   it, so guest RAM is quiet enough to touch). */
+static void on_serial(char c) {
+    if (!patch_pairs_n || patch_done || patch_attempts >= 8) return;
+    if (watch_len + 1 < sizeof watch_buf) {
+        watch_buf[watch_len++] = c;
+    } else {
+        memmove(watch_buf, watch_buf + 1, sizeof watch_buf - 2);
+        watch_buf[sizeof watch_buf - 2] = c;
+        watch_len = sizeof watch_buf - 1;
+    }
+    watch_buf[watch_len] = 0;
+    int armed = 0;
+    for (size_t i = 0; i < sizeof watch_markers / sizeof watch_markers[0]; i++)
+        if (strstr(watch_buf, watch_markers[i])) armed = 1;
+    if (!armed) return;
+    patch_attempts++;
+    int hits = patch_guest_strings();
+    if (hits) {
+        patch_done = 1;
+        fprintf(stderr, "hengevm: patched %d guest string(s) %s -> %s\n", hits, patch_pairs[0][0], patch_pairs[0][1]);
+    }
+}
+
 static void board_poll(void) {
     if (extra_poll) extra_poll();
     if (net_on) hv_net_poll();
 }
-
 static int fail(char *err, size_t n, const char *msg) {
     if (err && n) snprintf(err, n, "%s", msg);
     return -1;
@@ -281,6 +373,10 @@ int hv_vm_create(const HvVmConfig *c, char *err, size_t errlen) {
     }
     if (board.snd && !c->no_sound) hv_audio_attach(board.snd);
     board.poll = board_poll;
+    /* Optional: rewrite strings in guest RAM once the restore daemon is up (see
+       HV_PATCH_STR above), which is how the read-only root stops being fatal. */
+    patch_read_spec();
+    if (patch_pairs_n) hv_pl011_watch = on_serial;
     if (board.vusb && getenv("HV_VUSB_PROBE")) hv_usb_probe_start(board.vusb);
     // The setter and publication share this lock: an older preboot target can
     // never overwrite a monitor change made while the board was being built.
