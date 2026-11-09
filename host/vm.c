@@ -232,13 +232,16 @@ static void on_serial(char c) {
 static void board_poll(void) {
     if (extra_poll) extra_poll();
     if (net_on) hv_net_poll();
-    if (patch_pairs_n && !patch_done && patch_attempts < 16) {
+    if (patch_pairs_n && !patch_done && patch_attempts < 20) {
         double now = now_seconds();
-        if (patch_start == 0) patch_start = now, patch_next = now + 55.0;
+        /* The whole restore fails about 55 s into the run (37 s of daemon
+           uptime), and the ramdisk is in RAM from the second second on, so the
+           first pass is early and the rest just keep re-checking. */
+        if (patch_start == 0) patch_start = now, patch_next = now + 8.0;
         if (now >= patch_next) {
             patch_attempts++;
             patch_guest_strings(patch_attempts);
-            patch_next = now + 8.0;
+            patch_next = now + 5.0;
         }
     }
 }
