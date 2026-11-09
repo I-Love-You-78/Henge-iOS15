@@ -19,6 +19,7 @@
  * Answers are cached: call them as often as you like. */
 
 int hv_host_has_lse(void);     /* FEAT_LSE (v8.1): LDADD/SWP/CAS/CASP */
+int hv_host_has_lrcpc(void);   /* FEAT_LRCPC (v8.3): LDAPR/LDAPRB/LDAPRH. An A11 has LSE and not this. */
 int hv_host_has_lrcpc2(void);  /* FEAT_LRCPC2 (v8.4): LDAPUR/STLUR */
 int hv_host_has_crc32(void);   /* FEAT_CRC32: CRC32B/H/W/X and CRC32C* */
 int hv_host_has_rdm(void);     /* FEAT_RDM (v8.1): SQRDMLAH/SQRDMLSH */
