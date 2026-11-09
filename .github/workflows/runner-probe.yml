@@ -1,0 +1,25 @@
+name: runner probe
+
+# Which macOS arm64 images this account can actually get. A label that is not
+# provisioned shows up as a cancelled job with "The configuration ... is not
+# supported" in its annotations, which is what we want to read.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-arm64, macos-26, macos-26-arm64, macos-14, macos-14-arm64, macos-13]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: What did we get
+        run: |
+          echo "runner: ${{ matrix.os }}"
+          uname -a
+          uname -m
+          sysctl -n machdep.cpu.brand_string || true
+          xcodebuild -version || true
+          sw_vers || true
