@@ -22,7 +22,7 @@ jobs:
     # The differential part only runs where the CPU can execute the instructions
     # being compared (an Apple Silicon runner); on this host the CRC and decoder
     # checks still run, and everything compiles.
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +38,7 @@ jobs:
           make test-classify
 
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -88,4 +88,5 @@ jobs:
             ios/build/DerivedData-ios15.buildlog
           if-no-files-found: warn
           retention-days: 30
+
 

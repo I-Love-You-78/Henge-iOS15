@@ -289,7 +289,13 @@ static void dump_ram_grep(FILE *f, const char *path) {
 }
 static void dump_ram_region(int attempt) {
     const char *path = getenv("HV_RAM_DUMP");
-    if (!path || !*path || attempt != 10) return;
+    if (!path || !*path) return;
+    /* HV_RAM_DUMP_AT: which pass dumps (10 by default, about 45 s after iBoot
+       hands over, just before the restore gives up at 7%). Later passes see the
+       failure's own log lines, so which pass matters. */
+    const char *at = getenv("HV_RAM_DUMP_AT");
+    int want = at && atoi(at) > 0 ? atoi(at) : 10;
+    if (attempt != want) return;
     if (grep_pats_n) {
         FILE *f = fopen(path, "wb");
         if (!f) {
