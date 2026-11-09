@@ -1,4 +1,4 @@
-﻿name: iOS 15 / A9 build
+name: iOS 15 / A9 build
 
 # Builds Henge for iOS 15 and later (iPhone 6s / SE and up) on a GitHub macOS
 # runner and uploads the unsigned-but-ad-hoc-signed .ipa. Nothing here needs a
@@ -14,14 +14,20 @@
 # Mac is installed (see docs/ios15-a9-support.md).
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: 'macOS runner label (an Intel one cross-compiles too; only simd-test needs Apple Silicon)'
+        required: false
+        default: 'macos-15'
   push:
     branches: [main]
 
 jobs:
   simd-test:
-    # The differential part only runs where the CPU can execute the instructions
-    # being compared (an Apple Silicon runner); on this host the CRC and decoder
-    # checks still run, and everything compiles.
+    # The differential test only runs where the CPU can execute the instructions
+    # being compared, so it stays on an Apple Silicon runner and only runs for a
+    # push: a dispatch is usually someone hunting for capacity on another pool.
+    if: github.event_name == 'push'
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -38,7 +44,9 @@ jobs:
           make test-classify
 
   build:
-    runs-on: macos-15
+    # Cross-compiling for iOS arm64 works on an Intel runner too; the label is an
+    # input so a dispatch can try the other pool while the arm64 one is full.
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'macos-15' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
