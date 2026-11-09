@@ -134,11 +134,18 @@ int hv_install_check_ipsw(const char *ipsw, char *version, size_t vlen, char *pr
     int rc = -4;
     if (len && plist_from_memory(buf, (uint32_t)len, &root, &format) == PLIST_ERR_SUCCESS && root) {
         rc = 0;
-        plist_t v = plist_dict_get_item(root, "ProductVersion");
-        if (v && version && vlen) {
+        /* "27.2 (26B123)": the build matters as much as the version. Apple ships
+           more than one image per release, and only some of them carry a virtual
+           Mac (27.2 build 26B8125 lists Mac17,10-13 only; 26B123 lists
+           VirtualMac2,1). */
+        {
+            char ver[32] = "", build[32] = "";
             char *s = NULL;
-            plist_get_string_val(v, &s);
-            if (s) { snprintf(version, vlen, "%s", s); free(s); }
+            plist_t v = plist_dict_get_item(root, "ProductVersion");
+            if (v) { plist_get_string_val(v, &s); if (s) { snprintf(ver, sizeof ver, "%s", s); free(s); s = NULL; } }
+            plist_t b = plist_dict_get_item(root, "ProductBuildVersion");
+            if (b) { plist_get_string_val(b, &s); if (s) { snprintf(build, sizeof build, "%s", s); free(s); } }
+            if (version && vlen) snprintf(version, vlen, build[0] ? "%s (%s)" : "%s", ver, build);
         }
         plist_t types = plist_dict_get_item(root, "SupportedProductTypes");
         size_t at = 0;
