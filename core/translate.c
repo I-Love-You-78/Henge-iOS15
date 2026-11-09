@@ -898,6 +898,14 @@ static void translate_mem(Emit *e, uint32_t insn, uint64_t pc) {
        SIGILL on an A9, so they go to the C path, which emulates them with
        load/store-exclusive loops (core/memop.c, do_atomic). A modern host
        keeps them inline. */
+    /* LDAPR/LDAPRB/LDAPRH/LDAPR Xt, [Xn]: FEAT_LRCPC (v8.3). It shares the atomic
+       encoding space but not the LSE feature, so the LSE answer says nothing
+       about it: an A11 has LSE and not this, and the 15.6.1 kernel's first
+       acquire loads take it (the 8 Plus died on 0xb8bfc0c9 = ldapr w9, [x6]). */
+    if (op.kind == HV_MEM_ORDERED && (insn & 0x3ffffc00u) == 0x38bfc000u && !hv_host_has_lrcpc()) {
+        put_helper(e, pc, insn, HV_OP_MEM); /* a plain acquire load in the C path */
+        return;
+    }
     if ((op.kind == HV_MEM_ATOMIC || op.kind == HV_MEM_CAS) && !hv_host_has_lse()) {
         put_helper(e, pc, insn, HV_OP_MEM);
         return;

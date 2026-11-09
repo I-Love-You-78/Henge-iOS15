@@ -90,6 +90,15 @@ static int probe_lse(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_END()
 }
 
+/* ldapr w10, [x9]: 0x38bfc000 | Rn<<5 | Rt (FEAT_LRCPC, v8.3). */
+static int probe_lrcpc(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
+    PROBE_BEGIN()
+        __asm__ volatile("mov x9, %0\n"
+                         ".inst 0x38bfc12a\n"
+                         "dmb sy\n" :: "r"((void *)probe_mem) : "x9", "w10", "memory");
+    PROBE_END()
+}
+
 /* ldapur w10, [x9]: 0x19400000 | Rn<<5 | Rt. */
 static int probe_lrcpc2(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
     PROBE_BEGIN()
@@ -166,6 +175,7 @@ static int probe_jscvt(void) { if (!HV_HOST_MAY_PROBE) return CAP_UNKNOWN;
 #else /* an Apple host that is not arm64: nothing to probe with */
 
 static int probe_lse(void) { return CAP_UNKNOWN; }
+static int probe_lrcpc(void) { return CAP_UNKNOWN; }
 static int probe_lrcpc2(void) { return CAP_UNKNOWN; }
 static int probe_crc32(void) { return CAP_UNKNOWN; }
 static int probe_rdm(void) { return CAP_UNKNOWN; }
@@ -181,6 +191,7 @@ static int probe_jscvt(void) { return CAP_UNKNOWN; }
 #else /* not Darwin: the Mac build and the tests always run on a modern core. */
 
 static int probe_lse(void) { return CAP_UNKNOWN; }
+static int probe_lrcpc(void) { return CAP_UNKNOWN; }
 static int probe_lrcpc2(void) { return CAP_UNKNOWN; }
 static int probe_crc32(void) { return CAP_UNKNOWN; }
 static int probe_rdm(void) { return CAP_UNKNOWN; }
@@ -220,6 +231,12 @@ static int resolve(const char *const *names, int nnames, int (*probe)(void), int
 int hv_host_has_lse(void) {
     static int cached = CAP_UNKNOWN;
     if (cached == CAP_UNKNOWN) CAP(lse, probe_lse, "hw.optional.arm.FEAT_LSE", "hw.optional.armv8_1_atomics");
+    return cached;
+}
+
+int hv_host_has_lrcpc(void) {
+    static int cached = CAP_UNKNOWN;
+    if (cached == CAP_UNKNOWN) CAP(lrcpc, probe_lrcpc, "hw.optional.arm.FEAT_LRCPC", "hw.optional.armv8_3");
     return cached;
 }
 
@@ -285,6 +302,7 @@ int hv_host_has_jscvt(void) {
 
 void hv_host_features_resolve(void) {
     (void)hv_host_has_lse();
+    (void)hv_host_has_lrcpc();
     (void)hv_host_has_lrcpc2();
     (void)hv_host_has_crc32();
     (void)hv_host_has_rdm();
