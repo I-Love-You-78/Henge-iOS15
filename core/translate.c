@@ -1524,6 +1524,9 @@ static int translate_one(Emit *e, uint32_t insn, uint64_t pc) {
         }
         translate_copy(e, insn);
         return 0;
+    case HV_INSN_NOP: /* hint the host may take as undefined: emit a NOP */
+        put(e, 0xd503201f);
+        return 0;
     case HV_INSN_PCREL:
         translate_pcrel(e, insn, pc);
         return 0;
@@ -1660,7 +1663,7 @@ static int translate_one(Emit *e, uint32_t insn, uint64_t pc) {
             else put_branch_exit(e, pc + 4, 0);
             return 1;
         }
-        put(e, insn); /* DSB, DMB, SB */
+        put(e, hv_barrier_word(insn)); /* DSB, DMB, SB: see classify.c */
         return 0;
     }
     case HV_INSN_WAIT:
@@ -1789,7 +1792,8 @@ static void plan_groups(Emit *e, const uint32_t *code, uint32_t max, uint64_t va
         if (i > 0 && (va + 4ull * i == e->m->stop_pc || va + 4ull * i == e->m->stop_pc2)) break;
         HvInsnKind kind = hv_classify(insn);
         if ((e->flags & HV_BLOCK_FPOFF) && kind != HV_INSN_UNDEFINED && is_fp_insn(insn)) break;
-        if (kind == HV_INSN_COPY && (insn & 0xfffff01fu) == 0xd503201fu) continue; /* hints (NOP, BTI): no register */
+        if (kind == HV_INSN_NOP) continue; /* becomes a NOP: no register */
+        if (kind == HV_INSN_COPY && (insn & 0xfffff01fu) == 0xd503201fu) continue; /* hints (NOP, YIELD): no register */
         if (kind == HV_INSN_COPY || kind == HV_INSN_PCREL || kind == HV_INSN_LOAD_LITERAL) {
             KILL(insn);
             continue;

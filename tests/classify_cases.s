@@ -10,7 +10,7 @@ _hv_classify_cases:
     fadd d0, d1, d2             // copy
     movz x7, #0x1234            // copy
     nop                         // copy
-    bti c                       // copy
+    bti c                       // nop (a hint the host may not decode)
     adr x0, .                   // pcrel
     adrp x1, _hv_classify_cases@PAGE // pcrel
     b .                         // branch
@@ -49,3 +49,4 @@ _hv_classify_cases:
     pacga x3, x4, x5            // pac
     udf #0                      // undefined
 _hv_classify_cases_end:
+

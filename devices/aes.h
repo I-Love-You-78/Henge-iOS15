@@ -23,6 +23,10 @@ typedef struct HvAes {
     HvAesKey key[2];
     uint32_t iv[4][4];
     int encrypt, cbc;
+    /* The second 16 KB page (QEMU calls it aes2) carries the engine's control
+       words. Nothing in the crypto path runs through it, but the guest writes
+       and reads it back, so the values are kept. */
+    uint32_t aux2[16];
 } HvAes;
 
 HvAes *hv_aes_create(HvMachine *m, HvGic *gic, uint64_t pa1, uint64_t pa2, int intid);

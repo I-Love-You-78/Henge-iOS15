@@ -93,6 +93,12 @@ test-simd: $(B)/test_simd
 	$(B)/test_simd
 .PHONY: test-simd
 
+# Decoding: the kinds, and the words the JIT emits for the hint and barrier
+# spaces, where a guest instruction can name something the host does not decode.
+test-classify: $(B)/test_classify
+	$(B)/test_classify
+.PHONY: test-classify
+
 $(B)/hvsparse: tools/hvsparse_main.c host/hvsparse.c host/hvsparse.h | $(B)
 	$(CC) $(CFLAGS) tools/hvsparse_main.c host/hvsparse.c -o $@
 

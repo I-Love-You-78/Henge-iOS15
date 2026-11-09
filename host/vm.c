@@ -18,9 +18,11 @@
 #include <unistd.h>
 
 #include "audio_mac.h"
+#include "classify.h"
 #include "dispatch.h"
 #include "hostcaps.h"
 #include "net_slirp.h"
+#include "simd.h"
 
 static HvMachine m;
 static HvCpu cpus[HV_MAX_CPUS]; /* the board takes them as an array */
@@ -151,6 +153,13 @@ static void on_ill(int sig, siginfo_t *info, void *ctx) {
         }
         for (int i = 0; i < ncpus; i++)
             fprintf(stderr, "  cpu %d: guest pc %llx el%u miss site %llx\n", i, (unsigned long long)cpus[i].pc, cpus[i].el, (unsigned long long)cpus[i].miss_site);
+        if (in_rx) { /* what the host refused to run, named */
+            uint32_t w = *(const uint32_t *)(uintptr_t)pc;
+            fprintf(stderr, "  the word that trapped is %08x (%s)\n", w, hv_insn_kind_name(hv_classify(w)));
+            HvSimdOp op;
+            if (hv_simd_decode(w, &op)) fprintf(stderr, "  it is a %s instruction this host lacks\n", hv_simd_family_name(op.family));
+            else if ((w & 0xffe0001fu) == 0xd5030000u) fprintf(stderr, "  it is a hint or barrier: see hv_barrier_word\n");
+        }
         if (in_rx) { /* the code it ran up to here, as it stands */
             uint64_t from = pc - 0x300 < rx ? rx : pc - 0x300;
             fprintf(stderr, "  words from rx+%llx:", (unsigned long long)(from - rx));

@@ -258,3 +258,29 @@ ios/scripts/package_ios15_ipa.sh   出 ipa
 ```
 
 许可证不变：GPL-2.0-or-later。
+
+## 2026-02：restore 到 70% 后 SIGILL —— HINT/屏障空间
+
+现场：`hengevm: signal 4 in translated code: pc 102905e00 … guest pc 1030bec08 el0`，
+故障处那条**宿主机**指令字是 `0xd50330ff`。它不是我们生成的，是**原样复制**下来的 guest 指令。
+
+`0xd50330ff` = **`SB`**（speculation barrier，FEAT_SB，Armv8.5）。它在 **CRn=3 的系统指令空间**（不是
+HINT 空间），而 CRn=3 里没分配的编码在旧核上是**未定义**，不是 NOP —— A11 直接 SIGILL。
+
+同一类还有：`TSB`(FEAT_TRF)、`CLRBHB`、`DSB/DMB` 的 nXS 选项(FEAT_XS, v8.7)，以及 HINT 空间里
+v8.0 之后的那些（`BTI`、`CSDB`、`ESB`、`PSB`…，架构上是 NOP，但没必要赌宿主怎么解码）。
+
+修法（规则化，不是特例）：
+
+- `core/classify.c` 新增 `hv_barrier_word()`：DSB/DMB 只在选项合法（`CRm & 3` 非 0）时保留选项，
+  否则升到 `SY`（次序更强，安全）；`SB`/`TSB`/`CLRBHB` 以及 CRn=3 里其他未分配编码一律发 `NOP`
+  —— 推测/跟踪屏障不动架构状态，NOP 语义等价。
+- HINT 空间只复制 v8.0 就有的 `NOP/YIELD/SEV/SEVL`，其余（含 `BTI`）改发 `NOP`：新指令种类
+  `HV_INSN_NOP`。
+- `tests/test_classify.c` 加了 20 多条 HINT/屏障用例（含 `SB`、`TSB`、`BTI`、`CSDB`、`ESB`、
+  保留的 `DSB #4`→`SY`），CI 里 `make test-classify` 跑。
+- 崩溃日志现在直接**报出那条字**并解码：`the word that trapped is d50330ff (barrier)`，
+  SIMD 家族还会点名家底（`it is a fp16 instruction this host lacks`），下一轮不用再手工反汇编。
+
+同一轮还补了 `aes2`（第二页 16 KB 控制寄存器窗口）：以前写入直接丢弃、读永远 0，现在按 dword 记下
+并回读，第一次写入打一行 `aes2: control +0 = 4`。

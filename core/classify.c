@@ -9,6 +9,12 @@ static HvInsnKind classify_hint(uint32_t insn) {
     uint32_t op2 = (insn >> 5) & 0x7;
     uint32_t imm = (crm << 3) | op2;
     switch (imm) {
+    case 0:  /* NOP */
+    case 1:  /* YIELD */
+    case 4:  /* SEV */
+    case 5:  /* SEVL */
+        /* Allocated in v8.0, so the host can run them as they are. */
+        return HV_INSN_COPY;
     case 2:  /* WFE */
     case 3:  /* WFI */
         return HV_INSN_WAIT;
@@ -18,8 +24,10 @@ static HvInsnKind classify_hint(uint32_t insn) {
     case 28: case 29: case 30: case 31:  /* AUTIAZ, AUTIASP, AUTIBZ, AUTIBSP */
         return HV_INSN_PAC;
     default:
-        /* NOP, YIELD, SEV, SEVL, ESB, PSB, CSDB, BTI and unallocated hints run as NOPs. */
-        return HV_INSN_COPY;
+        /* ESB, PSB, CSDB, BTI, CHKFEAT, DGH and the hints Arm has not allocated
+           yet: they are NOPs by definition, but only some hosts decode them, so
+           emit our own NOP instead of handing the guest's word to the CPU. */
+        return HV_INSN_NOP;
     }
 }
 
@@ -102,9 +110,25 @@ HvInsnKind hv_classify(uint32_t insn) {
     return HV_INSN_UNDEFINED;
 }
 
-const char *hv_insn_kind_name(HvInsnKind kind) {
-    switch (kind) {
+/* HV_INSN_BARRIER covers CLREX, ISB and the DSB/DMB/SB family. CLREX and ISB
+   are handled by the translator itself; for the rest this is the word to emit,
+   and it is never the guest's own: an option field can name a form the host
+   does not decode (the nXS options are FEAT_XS, v8.7), and SB, TSB and CLRBHB
+   are FEAT_SB (v8.5), FEAT_TRF and v8.6, so an A11 takes them as undefined. */
+uint32_t hv_barrier_word(uint32_t insn) {
+    uint32_t op2 = (insn >> 5) & 7;
+    uint32_t crm = (insn >> 8) & 0xf;
+    uint32_t option = (crm & 3) ? crm : 0xfu; /* x001 OSHLD .. x111 SY; xx00 is reserved */
+    if (op2 == 4) return 0xd5033000u | option << 8 | 0x9f; /* dsb #option */
+    if (op2 == 5) return 0xd5033000u | option << 8 | 0xbf; /* dmb #option */
+    /* A barrier of speculation (SB), of trace (TSB) or a hint (CLRBHB) moves no
+       architectural state: a NOP keeps the guest's meaning. */
+    return 0xd503201fu;
+}
+
+const char *hv_insn_kind_name(HvInsnKind kind) {    switch (kind) {
     case HV_INSN_COPY: return "copy";
+    case HV_INSN_NOP: return "nop";
     case HV_INSN_PCREL: return "pcrel";
     case HV_INSN_BRANCH: return "branch";
     case HV_INSN_BRANCH_REG: return "branch-reg";

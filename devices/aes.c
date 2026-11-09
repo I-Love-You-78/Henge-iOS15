@@ -170,14 +170,25 @@ static void aes1_write(void *opaque, uint64_t off, uint64_t v, unsigned size) {
 }
 
 static uint64_t aes2_read(void *opaque, uint64_t off, unsigned size) {
-    (void)opaque, (void)off, (void)size;
+    HvAes *a = opaque;
+    (void)size;
+    if ((off & 3) == 0 && (off >> 2) < sizeof a->aux2 / sizeof a->aux2[0]) return a->aux2[off >> 2];
     return 0;
 }
 
 static void aes2_write(void *opaque, uint64_t off, uint64_t v, unsigned size) {
     HvAes *a = opaque;
     (void)size;
-    if (a->m->log) fprintf(stderr, "hengevm: aes2: write +%llx = %llx (not modelled)\n", (unsigned long long)off, (unsigned long long)v);
+    if ((off & 3) == 0 && (off >> 2) < sizeof a->aux2 / sizeof a->aux2[0]) {
+        static unsigned seen;
+        if (!(seen & (1u << (off >> 2))) && a->m->log) {
+            seen |= 1u << (off >> 2);
+            fprintf(stderr, "hengevm: aes2: control +%llx = %llx\n", (unsigned long long)off, (unsigned long long)v);
+        }
+        a->aux2[off >> 2] = (uint32_t)v;
+        return;
+    }
+    if (a->m->log >= 2) fprintf(stderr, "hengevm: aes2: write +%llx = %llx (ignored)\n", (unsigned long long)off, (unsigned long long)v);
 }
 
 HvAes *hv_aes_create(HvMachine *m, HvGic *gic, uint64_t pa1, uint64_t pa2, int intid) {

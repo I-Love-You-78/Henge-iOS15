@@ -32,6 +32,11 @@ jobs:
           uname -m
           make test-simd
 
+      - name: Decoding tests (hint and barrier spaces)
+        run: |
+          set -e
+          make test-classify
+
   build:
     runs-on: macos-15
     timeout-minutes: 90
