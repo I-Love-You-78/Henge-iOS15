@@ -21,6 +21,7 @@ struct InstallView: View {
     @State private var source: Installer.ImageSource = Installer.haveLocalImage ? .files : .download
     @State private var pickingImage = false
     @State private var localImage = Installer.localImage()
+    @State private var imageInfo: Installer.ImageInfo?
     @AppStorage("henge.cpus") private var cpus = 4
 
     var body: some View {
@@ -96,8 +97,16 @@ struct InstallView: View {
                         if let image = localImage {
                             Text(image.lastPathComponent)
                                 .font(.system(size: 15, weight: .medium)).foregroundColor(Desk.text).lineLimit(1)
-                            Text(ByteText.string(UInt64((try? image.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)))
-                                .font(.system(size: 13)).foregroundColor(Desk.good)
+                            HStack(spacing: 8) {
+                                Text(ByteText.string(UInt64((try? image.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)))
+                                    .font(.system(size: 13)).foregroundColor(Desk.good)
+                                if let info = imageInfo {
+                                    Text(info.buildsVirtualMac ? "macOS \(info.version) · virtual Mac ok"
+                                                               : "macOS \(info.version) · no Virtual Mac")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(info.buildsVirtualMac ? Desk.good : Desk.warn)
+                                }
+                            }
                         } else {
                             Text(source == .builtIn ? "No image inside this build" : "No image on this device")
                                 .font(.system(size: 15, weight: .medium)).foregroundColor(Desk.warn)
@@ -124,6 +133,7 @@ struct InstallView: View {
                row cannot claim a release the file is not. */
             guard chosen != .download else { return }
             localImage = Installer.localImage()
+            imageInfo = localImage.flatMap { Installer.inspect($0) }
             if let image = localImage, let match = Installer.release(forImage: image.lastPathComponent) { release = match }
         }
 
@@ -201,6 +211,7 @@ struct InstallView: View {
             HengeLog.log("install", "image brought in from Files: \(dest.lastPathComponent)")
         }
         localImage = Installer.localImage()
+        imageInfo = localImage.flatMap { Installer.inspect($0) }
         source = .files
         if let image = localImage, let match = Installer.release(forImage: image.lastPathComponent) { release = match }
     }

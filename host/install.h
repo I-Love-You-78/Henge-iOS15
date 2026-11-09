@@ -19,4 +19,16 @@ int hv_install_start(HvVirtioUsb *usb, const char *ipsw, const char *workdir, ui
 /* 1 while running, 0 when it succeeded, -1 when it failed. */
 int hv_install_result(void);
 
+/* What an IPSW's BuildManifest says it can install: its ProductVersion (e.g.
+   "15.6.1"), the product types it lists (comma separated, e.g. "Mac17,10,..."),
+   and whether it names a virtual Mac at all (VirtualMac2,1).
+
+   macOS 27.2's restore image lists only Mac17,10 to Mac17,13: no virtual Mac,
+   no AVPBooter and no vmapple component, so there is nothing for Henge's restore
+   chain to boot and idevicerestore refuses with "Could not make sure this
+   firmware is suitable for the current device". Checking here turns that into a
+   sentence before an hour is spent. Returns 0 on success. */
+int hv_install_check_ipsw(const char *ipsw, char *version, size_t vlen, char *products, size_t plen,
+                          int *builds_virtual_mac);
+
 #endif

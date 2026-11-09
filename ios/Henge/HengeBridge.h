@@ -1,4 +1,5 @@
 #include "Native/henge-ios-jit.h"
 #include "Native/henge-vm.h"
 #include "Native/HuskRPPairing.h"
+#include "install.h"
 #include "hvsparse.h"

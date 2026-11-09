@@ -128,6 +128,31 @@ final class Installer: NSObject, ObservableObject {
     /// True when this build or this device already has an image to install from.
     nonisolated static var haveLocalImage: Bool { localImage() != nil }
 
+    /// What an image says it can install, read from its BuildManifest.
+    struct ImageInfo: Equatable {
+        var version: String
+        var products: [String]
+        var buildsVirtualMac: Bool
+    }
+
+    /// Read the image's BuildManifest out of the IPSW (one member of a 16-20 GB
+    /// zip; libzip and libplist are already linked for the restore itself).
+    nonisolated static func inspect(_ ipsw: URL) -> ImageInfo? {
+        var version = [CChar](repeating: 0, count: 64)
+        var products = [CChar](repeating: 0, count: 2048)
+        var virtual: Int32 = 0
+        let rc = version.withUnsafeMutableBufferPointer { v in
+            products.withUnsafeMutableBufferPointer { p in
+                ipsw.path.withCString { path in
+                    henge_install_check_ipsw(path, v.baseAddress, v.count, p.baseAddress, p.count, &virtual)
+                }
+            }
+        }
+        guard rc == 0 else { return nil }
+        let list = String(cString: products).split(separator: ",").map(String.init)
+        return ImageInfo(version: String(cString: version), products: list, buildsVirtualMac: virtual != 0)
+    }
+
     /// Which listed release an image file belongs to, from the build id in its
     /// name: `UniversalMac_15.6.1_24G90_Restore.ipsw` is the 24G90 entry. nil
     /// when the name carries no id we know, which is worth showing: picking a
@@ -182,6 +207,21 @@ final class Installer: NSObject, ObservableObject {
                     }
                     HengeLog.log("install", "using the image inside Henge: \(built.lastPathComponent)")
                     ipsw = built
+                }
+                if let info = Self.inspect(ipsw) {
+                    HengeLog.log("install", "image \(ipsw.lastPathComponent): macOS \(info.version), "
+                                 + "builds a virtual Mac: \(info.buildsVirtualMac ? "yes" : "no"), "
+                                 + "product types: \(info.products.joined(separator: " "))")
+                    if !info.buildsVirtualMac {
+                        /* Apple's macOS 27.2 image lists only Mac17,10 to Mac17,13: no
+                           Virtual Mac, no AVPBooter, no vmapple component, so the restore
+                           has nothing to boot and refuses. Say that here rather than
+                           after the machine has started. */
+                        throw message("This image (macOS \(info.version)) cannot be installed on a virtual Mac. "
+                                    + "It lists \(info.products.prefix(4).joined(separator: ", ")) and no Virtual Mac entry, "
+                                    + "so the restore has nothing to boot. Use an image whose manifest names VirtualMac2,1 "
+                                    + "(macOS 15.6.1 does), or update macOS from inside the Mac once one runs.")
+                    }
                 }
                 phase = .preparing
                 var mac = try prepare(name: name, ramMB: ramMB, rom: rom)

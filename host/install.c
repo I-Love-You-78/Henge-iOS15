@@ -16,6 +16,9 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <plist/plist.h>
+#include <zip.h>
+
 #include "idevicerestore/src/idevicerestore.h"
 #include "usb_host.h"
 
@@ -92,3 +95,70 @@ int hv_install_start(HvVirtioUsb *usb, const char *ipsw, const char *workdir, ui
 }
 
 int hv_install_result(void) { return g_result; }
+
+/* ---- what an image can install ------------------------------------------ */
+
+/* Reads BuildManifest.plist out of an IPSW (a zip of 16-20 GB, so only that one
+   member is read) and reports the version it holds and the product types it
+   lists. libzip and libplist are already linked for the restore itself. */
+int hv_install_check_ipsw(const char *ipsw, char *version, size_t vlen, char *products, size_t plen,
+                          int *builds_virtual_mac) {
+    if (version && vlen) version[0] = 0;
+    if (products && plen) products[0] = 0;
+    if (builds_virtual_mac) *builds_virtual_mac = 0;
+
+    int err = 0;
+    zip_t *z = zip_open(ipsw, ZIP_RDONLY, &err);
+    if (!z) return -1;
+    zip_file_t *f = zip_fopen(z, "BuildManifest.plist", 0);
+    if (!f) { zip_close(z); return -2; }
+
+    size_t cap = 64u << 20, len = 0;
+    char *buf = malloc(cap);
+    if (!buf) { zip_fclose(f); zip_close(z); return -3; }
+    for (;;) {
+        if (len == cap) {
+            char *more = realloc(buf, cap * 2);
+            if (!more) break;
+            buf = more, cap *= 2;
+        }
+        zip_int64_t n = zip_fread(f, buf + len, (zip_uint64_t)(cap - len));
+        if (n <= 0) break;
+        len += (size_t)n;
+    }
+    zip_fclose(f);
+    zip_close(z);
+
+    plist_t root = NULL;
+    plist_format_t format = PLIST_FORMAT_NONE;
+    int rc = -4;
+    if (len && plist_from_memory(buf, (uint32_t)len, &root, &format) == PLIST_ERR_SUCCESS && root) {
+        rc = 0;
+        plist_t v = plist_dict_get_item(root, "ProductVersion");
+        if (v && version && vlen) {
+            char *s = NULL;
+            plist_get_string_val(v, &s);
+            if (s) { snprintf(version, vlen, "%s", s); free(s); }
+        }
+        plist_t types = plist_dict_get_item(root, "SupportedProductTypes");
+        size_t at = 0;
+        if (types && plist_get_node_type(types) == PLIST_ARRAY) {
+            uint32_t n = plist_array_get_size(types);
+            for (uint32_t i = 0; i < n; i++) {
+                plist_t item = plist_array_get_item(types, i);
+                char *s = NULL;
+                if (!item || plist_get_node_type(item) != PLIST_STRING) continue;
+                plist_get_string_val(item, &s);
+                if (!s) continue;
+                if (strcmp(s, "VirtualMac2,1") == 0 && builds_virtual_mac) *builds_virtual_mac = 1;
+                if (products && at + strlen(s) + 2 < plen) {
+                    at += (size_t)snprintf(products + at, plen - at, "%s%s", at ? "," : "", s);
+                }
+                free(s);
+            }
+        }
+        plist_free(root);
+    }
+    free(buf);
+    return rc;
+}
