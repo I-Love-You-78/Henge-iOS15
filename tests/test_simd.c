@@ -275,6 +275,10 @@ int main(void) {
         {"rax1",         0xce628c20u, 0},   /* rax1 v0.2d, v1.2d, v2.2d */
         {"bcax",         0xce220c20u, 0},
         {"xar",          0xce821c20u, 0},   /* xar v0.2d, v1.2d, v2.2d, #7 */
+        {"sha512h",      0xce628020u, 0},   /* sha512h q0, q1, v2.2d */
+        {"sha512h2",     0xce628420u, 0},   /* sha512h2 q0, q1, v2.2d */
+        {"sha512su1",    0xce628820u, 0},   /* sha512su1 q0, q1, v2.2d */
+        {"sha512su0",    0xcec08020u, 0},   /* sha512su0 q0, q1 */
         
         
         

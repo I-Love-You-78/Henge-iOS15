@@ -523,6 +523,50 @@ static void do_fcmla(HvCpu *cpu, const HvSimdOp *op, int lanes, int dbl) {
     vec_put(cpu, op->rd, d);
 }
 
+
+/* ---- SHA512 (FEAT_SHA512) ----------------------------------------------
+   Semantics taken from QEMU's crypto_helper.c, which follows the Arm ARM:
+   SHA512H/H2 fold Vd's two 64-bit halves with the choice/majority functions and
+   Sigma, SU0/SU1 spread with the small sigmas. */
+
+static uint64_t ror64(uint64_t x, int n) { return n ? (x >> n) | (x << (64 - n)) : x; }
+static uint64_t s0_512(uint64_t x) { return ror64(x, 1) ^ ror64(x, 8) ^ (x >> 7); }
+static uint64_t s1_512(uint64_t x) { return ror64(x, 19) ^ ror64(x, 61) ^ (x >> 6); }
+static uint64_t big_s0_512(uint64_t x) { return ror64(x, 28) ^ ror64(x, 34) ^ ror64(x, 39); }
+static uint64_t big_s1_512(uint64_t x) { return ror64(x, 14) ^ ror64(x, 18) ^ ror64(x, 41); }
+static uint64_t cho512(uint64_t x, uint64_t y, uint64_t z) { return (x & y) ^ (~x & z); }
+static uint64_t maj512(uint64_t x, uint64_t y, uint64_t z) { return (x & y) | (x & z) | (y & z); }
+
+static void do_sha512(HvCpu *cpu, const HvSimdOp *op) {
+    V128 d = vec_get(cpu, op->rd), n = vec_get(cpu, op->rn), m = vec_get(cpu, op->rm);
+    uint64_t d0 = lane_get(&d, 0, 8), d1 = lane_get(&d, 1, 8);
+    uint64_t n0 = lane_get(&n, 0, 8), n1 = lane_get(&n, 1, 8);
+    uint64_t m0 = lane_get(&m, 0, 8), m1 = lane_get(&m, 1, 8);
+    switch (op->op) {
+    case 0: /* SHA512H Qd, Qn, Vm.2D */
+        d1 += big_s1_512(m1) + cho512(m1, n0, n1);
+        d0 += big_s1_512(d1 + m0) + cho512(d1 + m0, m1, n0);
+        break;
+    case 1: /* SHA512H2 */
+        d1 += big_s0_512(m0) + maj512(n0, m1, m0);
+        d0 += big_s0_512(d1) + maj512(d1, m0, m1);
+        break;
+    case 2: /* SHA512SU1 */
+        d0 += s1_512(n0) + m0;
+        d1 += s1_512(n1) + m1;
+        break;
+    default: /* SHA512SU0 Qd, Qn */
+        d0 += s0_512(d1);
+        d1 += s0_512(n0);
+        break;
+    }
+    if (!op->q) { /* both halves are written by these instructions */
+    }
+    lane_put(&d, 0, 8, d0);
+    lane_put(&d, 1, 8, d1);
+    vec_put(cpu, op->rd, d);
+}
+
 int hv_simd_emulate(HvCpu *cpu, uint32_t insn, uint64_t pc) {
     HvSimdOp op;
     if (!hv_simd_decode(insn, &op)) {
@@ -565,6 +609,9 @@ int hv_simd_emulate(HvCpu *cpu, uint32_t insn, uint64_t pc) {
         return 0;
     case HV_SIMD_SHA3:
         do_sha3(cpu, &op);
+        return 0;
+    case HV_SIMD_SHA512:
+        do_sha512(cpu, &op);
         return 0;
     case HV_SIMD_FCADD:
     case HV_SIMD_FCMLA:
