@@ -198,6 +198,29 @@ static uint64_t psci(HvCpu *cpu, uint64_t fn) {
         cpu->x[3] = 0x4a4f50;
         return 0;
     default:
+        /* SMCCC's Vendor Specific Hypervisor Service range (0x8300_xxxx for the
+           32-bit form, 0xC300_xxxx for the 64-bit one). Apple's restore reports
+           its progress through these and stops if one is refused: the 15.6.1
+           restore reached "Uploading: 100.0%", printed its iBoot stage 2 banner
+           and then fell over on 0x8300FF01, which this used to answer with
+           NOT_SUPPORTED. They are optional services, so they now succeed and
+           are named once each in the log. */
+        if ((fn >> 24) == 0x83 || (fn >> 24) == 0xC3) {
+            static uint64_t seen[16];
+            int slot = -1;
+            for (int i = 0; i < 16; i++) {
+                if (seen[i] == fn) { slot = -2; break; }
+                if (seen[i] == 0 && slot < 0) slot = i;
+            }
+            if (slot >= 0) {
+                seen[slot] = fn;
+                if (cpu->m->log)
+                    fprintf(stderr, "hengevm: vendor hypervisor call %#llx (x1 %#llx x2 %#llx x3 %#llx) at el%u: treated as a no-op success\n",
+                            (unsigned long long)fn, (unsigned long long)cpu->x[1], (unsigned long long)cpu->x[2],
+                            (unsigned long long)cpu->x[3], cpu->el);
+            }
+            return 0;
+        }
         if (cpu->m->log) fprintf(stderr, "hengevm: unknown hypervisor call %#llx (x1 %#llx) at el%u\n",
                                  (unsigned long long)fn, (unsigned long long)cpu->x[1], cpu->el);
         return (uint64_t)-1;                                 /* NOT_SUPPORTED */
