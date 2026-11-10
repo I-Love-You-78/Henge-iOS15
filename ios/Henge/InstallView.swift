@@ -108,10 +108,9 @@ struct InstallView: View {
                                 }
                             }
                         } else {
-                            Text(source == .builtIn ? "No image inside this build" : "No image on this device")
+                            Text("No image on this device")
                                 .font(.system(size: 15, weight: .medium)).foregroundColor(Desk.warn)
-                            Text(source == .builtIn ? "The stock ipa carries none: the image is 16 GB."
-                                                    : "Copy an .ipsw into Files › Henge › Restore images.")
+                            Text("Copy an .ipsw into Files › Henge › Restore images.")
                                 .font(.system(size: 13)).foregroundColor(Desk.dim)
                         }
                     }

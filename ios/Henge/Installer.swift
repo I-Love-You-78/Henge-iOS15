@@ -66,7 +66,6 @@ final class Installer: NSObject, ObservableObject {
     enum ImageSource: String, CaseIterable, Identifiable {
         case download
         case files
-        case builtIn
 
         var id: String { rawValue }
 
@@ -74,7 +73,6 @@ final class Installer: NSObject, ObservableObject {
             switch self {
             case .download: return "Download"
             case .files: return "On this device"
-            case .builtIn: return "Inside Henge"
             }
         }
 
@@ -82,7 +80,6 @@ final class Installer: NSObject, ObservableObject {
             switch self {
             case .download: return "Henge downloads the image from Apple when it installs."
             case .files: return "An .ipsw in Files › Henge › Restore images, or one you pick. Download it once and every reinstall reuses it."
-            case .builtIn: return "An image packaged inside this copy of Henge. The stock build carries none: the image is 16 GB."
             }
         }
     }
@@ -94,35 +91,25 @@ final class Installer: NSObject, ObservableObject {
             .appendingPathComponent("Restore images", isDirectory: true)
     }
 
-    /// A restore image shipped inside the app bundle, if this build carries one.
-    nonisolated static var bundledImage: URL? {
-        if let u = Bundle.main.url(forResource: "macos", withExtension: "ipsw") { return u }
-        let root = Bundle.main.bundleURL
-        let items = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-        return items.first { $0.pathExtension.lowercased() == "ipsw" && isWholeImage($0) }
-    }
-
+    /// A real restore image, not a stub someone left behind: at least 1 GB.
     private nonisolated static func isWholeImage(_ url: URL) -> Bool {
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
         return size > 1 << 30  /* a restore image is at least a gigabyte; a stub is not */
     }
 
-    /// The image to install from when not downloading: the newest .ipsw in
-    /// Files › Henge › Restore images, then one Henge downloaded earlier, then
-    /// one inside the bundle.
+    /// The image to install from when not downloading: the newest whole .ipsw in
+    /// Files › Henge › Restore images. That folder is the only place an image is
+    /// looked for, so there is no second copy to keep in step with it.
     nonisolated static func localImage() -> URL? {
-        var candidates: [URL] = []
-        for dir in [documentsImageDirectory, imageDirectory] {
-            let items = (try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])) ?? []
-            candidates += items.filter { $0.pathExtension.lowercased() == "ipsw" && isWholeImage($0) }
-        }
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: documentsImageDirectory, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])) ?? []
+        let candidates = items.filter { $0.pathExtension.lowercased() == "ipsw" && isWholeImage($0) }
         let newestFirst = candidates.sorted {
             let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
             let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
             return a > b
         }
-        return newestFirst.first ?? bundledImage
+        return newestFirst.first
     }
 
     /// True when this build or this device already has an image to install from.
@@ -201,12 +188,6 @@ final class Installer: NSObject, ObservableObject {
                     }
                     HengeLog.log("install", "using the image on this device: \(local.lastPathComponent)")
                     ipsw = local
-                case .builtIn:
-                    guard let built = Self.bundledImage else {
-                        throw message("This copy of Henge has no macOS image inside it. Use Download, or an image in Files.")
-                    }
-                    HengeLog.log("install", "using the image inside Henge: \(built.lastPathComponent)")
-                    ipsw = built
                 }
                 if let info = Self.inspect(ipsw) {
                     HengeLog.log("install", "image \(ipsw.lastPathComponent): macOS \(info.version), "
