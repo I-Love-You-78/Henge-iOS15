@@ -585,8 +585,35 @@ int dfu_enter_recovery(struct idevicerestore_client_t* client, plist_t build_ide
 				return -1;
 			}
 
-			/* HengeVM: HV_RESTORE_BOOT_ARGS adds arguments (debugging: "serial=3" puts the restore kernel's log on the UART). */
-			char henge_args[512];
+			/* HengeVM: HV_NVRAM_BOOT_ARGS writes persistent boot-args, which is
+			   what the *installed* macOS boots with later. Needed because the
+			   corecrypto FIPS post-test does not pass on an emulated CPU: XNU
+			   panics on its non-zero exit ("cc_fips_test[7] exited") unless
+			   panic_on_crash_disabled is set, and corecrypto's own fips_mode
+			   flag has a no-panic bit too. The restore's own args below are
+			   non-persistent, so this boot is unaffected. */
+			const char *nvr_args = getenv("HV_NVRAM_BOOT_ARGS");
+			if (nvr_args && *nvr_args) {
+				char persistent[512];
+				snprintf(persistent, sizeof(persistent), "setenv boot-args %s", nvr_args);
+				if (dfu_send_command(client, persistent) < 0) {
+					mutex_unlock(&client->device_event_mutex);
+					logger(LL_ERROR, "Unable to send command to device\n");
+					irecv_close(client->dfu->client);
+					client->dfu->client = NULL;
+					return -1;
+				}
+				if (dfu_send_command(client, "saveenv") < 0) {
+					mutex_unlock(&client->device_event_mutex);
+					logger(LL_ERROR, "Unable to send command to device\n");
+					irecv_close(client->dfu->client);
+					client->dfu->client = NULL;
+					return -1;
+				}
+				logger(LL_INFO, "HengeVM: persistent boot-args set to '%s'\n", nvr_args);
+			}
+
+			/* HengeVM: HV_RESTORE_BOOT_ARGS adds arguments (debugging: "serial=3" puts the restore kernel's log on the UART). */			char henge_args[512];
 			snprintf(henge_args, sizeof(henge_args), "setenvnp boot-args rd=md0 nand-enable-reformat=1 -progress -restore%s%s",
 				getenv("HV_RESTORE_BOOT_ARGS") ? " " : "", getenv("HV_RESTORE_BOOT_ARGS") ? getenv("HV_RESTORE_BOOT_ARGS") : "");
 			if (dfu_send_command(client, henge_args) < 0) {
