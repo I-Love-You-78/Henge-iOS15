@@ -65,6 +65,9 @@ final class Machines: ObservableObject {
     /// The files an exported machine folder holds; its disk is disk.img, or disk.img.hvsparse (tools/export_ios.sh packs it).
     static let required = ["AVPBooter.vmapple2.bin", "auxiliary.bin", "machine.json"]
     static let packedDisk = "disk.img.hvsparse"
+    /// Optional: an auxiliary storage to start a newly made Mac with, in Documents.
+    /// Firmware-written, so it can carry settings (boot-args) that cannot be forged.
+    static let auxSeed = "aux-seed.bin"
 
     nonisolated static func hasDisk(_ folder: URL) -> Bool {
         let fm = FileManager.default
@@ -144,7 +147,18 @@ final class Machines: ObservableObject {
             excludeFromBackup()
             try? fm.removeItem(at: mac.rom)
             try fm.copyItem(at: rom, to: mac.rom)
-            guard henge_make_aux(mac.aux.path) == 0 else { throw message("Cannot create the auxiliary storage.") }
+            // A seed, if the user put one there: an auxiliary storage written by the
+            // firmware itself (it is what carries settings such as boot-args, which
+            // cannot be forged — the store is checksummed). Without one the storage
+            // starts empty and the firmware writes its defaults on the first boot.
+            let seed = Self.inbox.appendingPathComponent(Self.auxSeed)
+            if fm.fileExists(atPath: seed.path), henge_make_aux(mac.aux.path) == 0 {
+                try? fm.removeItem(at: mac.aux)
+                try? fm.copyItem(at: seed, to: mac.aux)
+                HengeLog.log("machines", "auxiliary storage seeded from \(Self.auxSeed)")
+            } else if !fm.fileExists(atPath: mac.aux.path) {
+                guard henge_make_aux(mac.aux.path) == 0 else { throw message("Cannot create the auxiliary storage.") }
+            }
             let info: [String: Any] = ["name": mac.name, "ecid": ecid, "seed": 0, "ramMB": mac.ramMB]
             try JSONSerialization.data(withJSONObject: info).write(to: dest.appendingPathComponent("machine.json"))
 
