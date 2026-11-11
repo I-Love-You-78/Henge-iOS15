@@ -127,6 +127,16 @@ static char patch_pairs[4][2][64];
 static int patch_pairs_n;
 static int patch_attempts;
 static int patch_done;
+/* Pairs that must not be rewritten while the restore environment boots: its
+   own startup uses /mnt5/ticket, and pointing that at a volume that is not
+   mounted yet stops it from coming up at all ("Failed to place device in
+   restore mode"). The same path is only needed near the end (populate_preboot_
+   volume), so these are applied after a delay instead. */
+static char late_pairs[4][2][64];
+static int late_pairs_n;
+static int late_done;
+static double late_after;
+static double scan_start;
 static int iboot_done;   /* iBoot has handed the machine to the kernel */
 static char watch_buf[64];
 static size_t watch_len;
@@ -140,38 +150,47 @@ static double now_seconds(void) {
     return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
 
-static void patch_read_spec(void) {
-    const char *spec = getenv("HV_PATCH_STR");
-    if (!spec || !*spec) return;
+static int read_pairs(const char *env, char pairs[][2][64], int max) {
+    const char *spec = getenv(env);
+    if (!spec || !*spec) return 0;
     char buf[4 * 2 * 64];
     snprintf(buf, sizeof buf, "%s", spec);
+    int n = 0;
     char *save = NULL;
-    for (char *item = strtok_r(buf, ";", &save); item && patch_pairs_n < 4; item = strtok_r(NULL, ";", &save)) {
+    for (char *item = strtok_r(buf, ";", &save); item && n < max; item = strtok_r(NULL, ";", &save)) {
         char *eq = strchr(item, '=');
         if (!eq) continue;
         size_t ol = (size_t)(eq - item), nl = strlen(eq + 1);
-        if (ol == 0 || ol != nl || ol >= sizeof patch_pairs[0][0]) {
-            fprintf(stderr, "hengevm: HV_PATCH_STR: '%s' needs equal-length halves under 64 bytes\n", item);
+        if (ol == 0 || ol != nl || ol >= 64) {
+            fprintf(stderr, "hengevm: %s: '%s' needs equal-length halves under 64 bytes\n", env, item);
             continue;
         }
-        memcpy(patch_pairs[patch_pairs_n][0], item, ol);
-        patch_pairs[patch_pairs_n][0][ol] = 0;
-        memcpy(patch_pairs[patch_pairs_n][1], eq + 1, nl + 1);
-        patch_pairs_n++;
+        memcpy(pairs[n][0], item, ol);
+        pairs[n][0][ol] = 0;
+        memcpy(pairs[n][1], eq + 1, nl + 1);
+        n++;
     }
-    if (patch_pairs_n)
-        fprintf(stderr, "hengevm: HV_PATCH_STR armed: %s -> %s\n", patch_pairs[0][0], patch_pairs[0][1]);
+    if (n) fprintf(stderr, "hengevm: %s armed: %s -> %s\n", env, pairs[0][0], pairs[0][1]);
+    return n;
 }
 
-/* One pass over guest RAM: counts, and rewrites where the halves differ, so
-   `from=from` works as a probe that only reports whether a string is there. */
-static void patch_guest_strings(int attempt) {
+static void patch_read_spec(void) {
+    patch_pairs_n = read_pairs("HV_PATCH_STR", patch_pairs, 4);
+    late_pairs_n = read_pairs("HV_PATCH_LATE", late_pairs, 4);
+    const char *after = getenv("HV_PATCH_LATE_AFTER");
+    late_after = after && atof(after) > 0 ? atof(after) : 600.0;
+}
+
+/* One pass over one list of pairs: counts, and rewrites where the halves
+   differ, so `from=from` works as a probe that only reports whether a string is
+   there. Returns 1 if something was rewritten. */
+static int patch_list(char pairs[][2][64], int n, const char *what, int attempt) {
     uint8_t *ram = board.ram;
     uint64_t size = board.ram_size;
-    if (!ram || !size) return;
+    if (!ram || !size) return 0;
     int counts[4] = {0, 0, 0, 0};
-    for (int i = 0; i < patch_pairs_n; i++) {
-        const char *from = patch_pairs[i][0], *to = patch_pairs[i][1];
+    for (int i = 0; i < n; i++) {
+        const char *from = pairs[i][0], *to = pairs[i][1];
         size_t len = strlen(from);
         int changing = memcmp(from, to, len) != 0;
         uint64_t at = 0;
@@ -188,19 +207,25 @@ static void patch_guest_strings(int attempt) {
             at = (uint64_t)(p - ram) + len;
         }
     }
-    /* Say what each pair found; an attempt that found nothing is worth one line
-       for the first few tries, or we cannot tell a wrong literal from a lost one. */
+    /* Say what each pair found; an attempt that found nothing is worth one line,
+       or we cannot tell a wrong literal from a lost one. */
     if (board.m && board.m->log) {
-        fprintf(stderr, "hengevm: HV_PATCH_STR attempt %d:", attempt);
-        for (int i = 0; i < patch_pairs_n; i++) fprintf(stderr, " %s=%d", patch_pairs[i][0], counts[i]);
+        fprintf(stderr, "hengevm: %s attempt %d:", what, attempt);
+        for (int i = 0; i < n; i++) fprintf(stderr, " %s=%d", pairs[i][0], counts[i]);
         fprintf(stderr, "\n");
     }
-    for (int i = 0; i < patch_pairs_n; i++) {
-        if (!counts[i] || memcmp(patch_pairs[i][0], patch_pairs[i][1], strlen(patch_pairs[i][0])) == 0) continue;
-        patch_done = 1;
+    int changed = 0;
+    for (int i = 0; i < n; i++) {
+        if (!counts[i] || memcmp(pairs[i][0], pairs[i][1], strlen(pairs[i][0])) == 0) continue;
+        changed = 1;
         if (board.m && board.m->log)
-            fprintf(stderr, "hengevm: patched %d guest string(s) %s -> %s\n", counts[i], patch_pairs[i][0], patch_pairs[i][1]);
+            fprintf(stderr, "hengevm: patched %d guest string(s) %s -> %s\n", counts[i], pairs[i][0], pairs[i][1]);
     }
+    return changed;
+}
+
+static void patch_guest_strings(int attempt) {
+    if (patch_list(patch_pairs, patch_pairs_n, "HV_PATCH_STR", attempt)) patch_done = 1;
 }
 
 /* Called for every byte the guest writes to its UART: it is how we know iBoot
@@ -341,23 +366,34 @@ static void dump_ram_region(int attempt) {
 }
 
 static int scan_active(void) {
-    return iboot_done && ((patch_pairs_n && !patch_done) || getenv("HV_RAM_DUMP") != NULL);
+    if (!iboot_done) return 0;
+    if (patch_pairs_n && !patch_done) return 1;
+    if (late_pairs_n && !late_done) return 1;
+    return getenv("HV_RAM_DUMP") != NULL;
 }
 
 static void board_poll(void) {
     if (extra_poll) extra_poll();
     if (net_on) hv_net_poll();
-    if (scan_active() && patch_attempts < 20) {
+    if (scan_active() && patch_attempts < 4000) {
         double now = now_seconds();
         /* The scans start 3 s after iBoot hands over (see on_serial) and repeat
            every 5 s: restored's own strings only show up as its pages arrive,
-           and the step that fails runs about 25 s after the handover. */
+           and the step that fails runs about 25 s after the handover. Once the
+           early pairs are done the cadence drops to a minute, which is what the
+           late ones need: they are only useful an hour in (populate_preboot).
+        */
         if (patch_next == 0) patch_next = now + 3.0;
+        if (scan_start == 0) scan_start = now;
         if (now >= patch_next) {
             patch_attempts++;
-            if (patch_pairs_n) patch_guest_strings(patch_attempts);
+            int early = patch_pairs_n && !patch_done;
+            if (early) patch_guest_strings(patch_attempts);
+            if (late_pairs_n && !late_done && now - scan_start >= late_after) {
+                if (patch_list(late_pairs, late_pairs_n, "HV_PATCH_LATE", patch_attempts)) late_done = 1;
+            }
             dump_ram_region(patch_attempts);
-            patch_next = now + 5.0;
+            patch_next = now + (early ? 5.0 : 60.0);
         }
     }
 }
