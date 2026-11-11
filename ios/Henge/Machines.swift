@@ -116,6 +116,76 @@ final class Machines: ObservableObject {
         }
     }
 
+    /// A disk image on its own: it becomes the disk of a new Mac, whose auxiliary
+    /// storage starts empty and is written by the firmware on its next boot. That
+    /// is how a disk whose own machine cannot be brought in still boots — for
+    /// instance one exported from a machine whose NVRAM holds settings we want to
+    /// keep, or whose folder has no auxiliary storage to go with it.
+    func importDisk(_ url: URL) {
+        Task {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            await adoptDisk(url)
+        }
+    }
+
+    private func adoptDisk(_ url: URL) async {
+        do {
+            let fm = FileManager.default
+            let rom = try await BootROM.file()
+            let stem = url.deletingPathExtension().lastPathComponent
+            let ecid = UInt64.random(in: 1 << 40 ..< 1 << 62)
+            var mac = VirtualMac(name: stem.isEmpty ? "Mac" : stem, ecid: ecid, seed: 0,
+                                 ramMB: Installer.installRAMFloorMB, diskBytes: 0)
+            importing = mac.name
+            unpacked = 0
+            let dest = mac.directory
+            try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+            excludeFromBackup()
+            try? fm.removeItem(at: mac.rom)
+            try fm.copyItem(at: rom, to: mac.rom)
+            guard henge_make_aux(mac.aux.path) == 0 else { throw message("Cannot create the auxiliary storage.") }
+            let info: [String: Any] = ["name": mac.name, "ecid": ecid, "seed": 0, "ramMB": mac.ramMB]
+            try JSONSerialization.data(withJSONObject: info).write(to: dest.appendingPathComponent("machine.json"))
+
+            // HVSPARSE is what an export packs a disk into; anything else is taken
+            // as a raw image, which File Manager may have expanded hole by hole.
+            var head = Data()
+            if let h = try? FileHandle(forReadingFrom: url) {
+                head = h.readData(ofLength: 8)
+                try? h.close()
+            }
+            let packed = head == Data("HVSPARSE".utf8)
+            let source = url.path, target = mac.disk.path
+            let ok = await Task.detached { () -> Bool in
+                if packed {
+                    return hv_sparse_unpack(source, target, { done, total, _ in
+                        let fraction = Double(done) / Double(max(total, 1))
+                        Task { @MainActor in Machines.shared.unpacked = fraction }
+                    }, nil) == 0
+                }
+                let fm2 = FileManager.default
+                try? fm2.removeItem(atPath: target)
+                guard (try? fm2.copyItem(atPath: source, toPath: target)) != nil else { return false }
+                let size = (try? fm2.attributesOfItem(atPath: target)[.size] as? Int64) ?? 0
+                if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: target)) {
+                    if size < Int64(64) << 30 { try? h.truncate(atOffset: UInt64(64) << 30) }
+                    try? h.close()
+                }
+                return true
+            }.value
+            guard ok else { try? fm.removeItem(at: dest); throw message("The disk image could not be brought in (not enough space?).") }
+            mac.diskBytes = (try? fm.attributesOfItem(atPath: mac.disk.path)[.size] as? Int64) ?? 0
+            all.append(mac)
+            save()
+            HengeLog.log("machines", "imported a disk image as \(mac.name) (ECID \(mac.ecid), \(mac.diskBytes >> 30) GB)")
+        } catch {
+            lastError = error.localizedDescription
+            HengeLog.log("machines", "disk import of \(url.lastPathComponent) failed: \(error.localizedDescription)")
+        }
+        importing = nil
+    }
+
     /// A folder chosen in the Files picker: copied (it may be on another volume).
     func importFolder(_ folder: URL) {
         Task {

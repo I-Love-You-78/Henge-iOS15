@@ -9,6 +9,7 @@ struct HomeView: View {
     @Binding var running: VirtualMac?
     @Binding var tab: RootView.Tab
     @State private var picking = false
+    @State private var pickingDisk = false
     @State private var jitReady = JITBootstrap.ready
     @State private var chosen: UUID?
 
@@ -47,6 +48,7 @@ struct HomeView: View {
                     Menu {
                         Button("Install macOS…") { tab = .install }
                         Button("Bring in a Mac from a computer…") { picking = true }
+                        Button("Bring in a disk image…") { pickingDisk = true }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -55,6 +57,9 @@ struct HomeView: View {
             }
             .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
                 if case let .success(url) = result { machines.importFolder(url) }
+            }
+            .fileImporter(isPresented: $pickingDisk, allowedContentTypes: [UTType(filenameExtension: "hvsparse") ?? .data, .data]) { result in
+                if case let .success(url) = result { machines.importDisk(url) }
             }
             .compatTask {
                 while !Task.isCancelled { // the region may be claimed after a hand-off to StikDebug
